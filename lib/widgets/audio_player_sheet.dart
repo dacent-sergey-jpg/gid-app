@@ -70,110 +70,113 @@ class _AudioPlayerSheetState extends State<AudioPlayerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(24.0),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.white24,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(height: 20),
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
 
-          Text(
-            widget.poi.title,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '${widget.poi.distanceMeters.toStringAsFixed(0)} м от вас',
-            style: const TextStyle(color: Color(0xFFFF9800), fontSize: 13),
-          ),
-          const SizedBox(height: 20),
-
-          // Слайдер времени
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              activeTrackColor: const Color(0xFFFF5722),
-              inactiveTrackColor: Colors.white12,
-              thumbColor: const Color(0xFFFF5722),
-              trackHeight: 4,
-            ),
-            child: Slider(
-              min: 0,
-              max: _duration.inSeconds > 0 ? _duration.inSeconds.toDouble() : 1.0,
-              value: _position.inSeconds.toDouble().clamp(
-                0.0,
-                _duration.inSeconds > 0 ? _duration.inSeconds.toDouble() : 1.0,
+    return SafeArea(
+      bottom: true,
+      child: Container(
+        padding: EdgeInsets.fromLTRB(24, 16, 24, 16 + bottomPadding),
+        decoration: const BoxDecoration(
+          color: Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
               ),
-              onChanged: (value) {
-                widget.audioPlayer.seek(Duration(seconds: value.toInt()));
-              },
             ),
-          ),
+            const SizedBox(height: 16),
 
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Text(
+              widget.poi.title,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${widget.poi.distanceMeters.toStringAsFixed(0)} м от вас',
+              style: const TextStyle(color: Color(0xFFFF9800), fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                activeTrackColor: const Color(0xFFFF5722),
+                inactiveTrackColor: Colors.white12,
+                thumbColor: const Color(0xFFFF5722),
+                trackHeight: 4,
+              ),
+              child: Slider(
+                min: 0,
+                max: _duration.inSeconds > 0 ? _duration.inSeconds.toDouble() : 1.0,
+                value: _position.inSeconds.toDouble().clamp(
+                  0.0,
+                  _duration.inSeconds > 0 ? _duration.inSeconds.toDouble() : 1.0,
+                ),
+                onChanged: (value) {
+                  widget.audioPlayer.seek(Duration(seconds: value.toInt()));
+                },
+              ),
+            ),
+
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(_formatDuration(_position), style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                  Text(_formatDuration(_duration), style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                Text(_formatDuration(_position), style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                Text(_formatDuration(_duration), style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                TextButton(
+                  onPressed: _changeSpeed,
+                  child: Text(
+                    '${_playbackRate}x',
+                    style: const TextStyle(color: Color(0xFFFF5722), fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ),
+                IconButton(
+                  iconSize: 32,
+                  icon: const Icon(Icons.replay_10, color: Colors.white),
+                  onPressed: () => _seekRelative(-10),
+                ),
+                CircleAvatar(
+                  radius: 28,
+                  backgroundColor: const Color(0xFFFF5722),
+                  child: IconButton(
+                    iconSize: 32,
+                    icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
+                    onPressed: () {
+                      if (_isPlaying) {
+                        widget.audioPlayer.pause();
+                      } else {
+                        widget.audioPlayer.resume();
+                      }
+                    },
+                  ),
+                ),
+                IconButton(
+                  iconSize: 32,
+                  icon: const Icon(Icons.forward_10, color: Colors.white),
+                  onPressed: () => _seekRelative(10),
+                ),
+                const SizedBox(width: 32),
               ],
             ),
-          ),
-          const SizedBox(height: 16),
-
-          // Кнопки управления
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              TextButton(
-                onPressed: _changeSpeed,
-                child: Text(
-                  '${_playbackRate}x',
-                  style: const TextStyle(color: Color(0xFFFF5722), fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-              ),
-              IconButton(
-                iconSize: 36,
-                icon: const Icon(Icons.replay_10, color: Colors.white),
-                onPressed: () => _seekRelative(-10),
-              ),
-              CircleAvatar(
-                radius: 32,
-                backgroundColor: const Color(0xFFFF5722),
-                child: IconButton(
-                  iconSize: 36,
-                  icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
-                  onPressed: () {
-                    if (_isPlaying) {
-                      widget.audioPlayer.pause();
-                    } else {
-                      widget.audioPlayer.resume();
-                    }
-                  },
-                ),
-              ),
-              IconButton(
-                iconSize: 36,
-                icon: const Icon(Icons.forward_10, color: Colors.white),
-                onPressed: () => _seekRelative(10),
-              ),
-              const SizedBox(width: 40), // Балансировка макета
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
