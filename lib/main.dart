@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as latlong;
+
 import 'services/api_service.dart';
+import 'services/geofence_service.dart';
+import 'widgets/audio_player_sheet.dart';
 
 List<PoiModel> favoritePoiList = [];
 
@@ -49,10 +53,23 @@ class _HomeScreenState extends State<HomeScreen> {
   double currentLon = 39.8837;
   bool isGpsLoading = false;
 
+  StreamSubscription<Position>? _positionStreamSubscription;
+  final GeofenceService _geofenceService = GeofenceService(triggerRadiusMeters: 30.0);
+  final AudioPlayer _sharedAudioPlayer = AudioPlayer();
+  List<PoiModel> _nearbyPois = [];
+
   @override
   void initState() {
     super.initState();
     _determinePosition();
+    _startGeofencingListener();
+  }
+
+  @override
+  void dispose() {
+    _positionStreamSubscription?.cancel();
+    _sharedAudioPlayer.dispose();
+    super.dispose();
   }
 
   Future<void> _determinePosition() async {
@@ -83,6 +100,103 @@ class _HomeScreenState extends State<HomeScreen> {
       currentLon = position.longitude;
       isGpsLoading = false;
     });
+
+    _nearbyPois = await ApiService.fetchNearbyPoi(lat: currentLat, lon: currentLon);
+  }
+
+  void _startGeofencingListener() {
+    const locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10, // Обновлять при перемещении на каждые 10 метров
+    );
+
+    _positionStreamSubscription = Geolocator.getPositionStream(
+      locationSettings: locationSettings,
+    ).listen((Position position) async {
+      if (!mounted) return;
+
+      setState(() {
+        currentLat = position.latitude;
+        currentLon = position.longitude;
+      });
+
+      if (!isExcursionActive) return;
+
+      if (_nearbyPois.isEmpty) {
+        _nearbyPois = await ApiService.fetchNearbyPoi(lat: currentLat, lon: currentLon);
+      }
+
+      final triggeredPoi = _geofenceService.checkProximity(
+        userLat: currentLat,
+        userLon: currentLon,
+        poiList: _nearbyPois,
+      );
+
+      if (triggeredPoi != null && mounted) {
+        _showGeofenceSnackBar(triggeredPoi);
+      }
+    });
+  }
+
+  void _showGeofenceSnackBar(PoiModel poi) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: const Color(0xFF2A2A2A),
+        duration: const Duration(seconds: 6),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        content: Row(
+          children: [
+            const Icon(Icons.spatial_audio_off, color: Color(0xFFFF5722)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Вы рядом с объектом!',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                  Text(
+                    poi.title,
+                    style: const TextStyle(color: Colors.grey, fontSize: 13),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        action: SnackBarAction(
+          label: 'СЛУШАТЬ',
+          textColor: const Color(0xFFFF5722),
+          onPressed: () => _openAudioSheet(poi),
+        ),
+      ),
+    );
+  }
+
+  void _openAudioSheet(PoiModel poi) async {
+    String url = poi.audioUrl;
+    if (!url.startsWith('http') || url.contains('example.com')) {
+      url = 'https://actions.google.com/sounds/v1/ambiences/outdoor_city.ogg';
+    }
+
+    await _sharedAudioPlayer.stop();
+    await _sharedAudioPlayer.play(UrlSource(url));
+
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => AudioPlayerSheet(
+        poi: poi,
+        audioPlayer: _sharedAudioPlayer,
+      ),
+    );
   }
 
   void _toggleExcursion() {
@@ -237,7 +351,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => MapScreen(lat: currentLat, lon: currentLon)),
+                    MaterialPageRoute(
+                      builder: (context) => MapScreen(
+                        lat: currentLat,
+                        lon: currentLon,
+                        audioPlayer: _sharedAudioPlayer,
+                      ),
+                    ),
                   );
                 },
               ),
@@ -304,8 +424,14 @@ class _HomeScreenState extends State<HomeScreen> {
 class MapScreen extends StatefulWidget {
   final double lat;
   final double lon;
+  final AudioPlayer audioPlayer;
 
-  const MapScreen({super.key, required this.lat, required this.lon});
+  const MapScreen({
+    super.key,
+    required this.lat,
+    required this.lon,
+    required this.audioPlayer,
+  });
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -313,7 +439,6 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   late Future<List<PoiModel>> _poiFuture;
-  final AudioPlayer _audioPlayer = AudioPlayer();
   PoiModel? _playingPoi;
   PoiModel? _selectedPoi;
   bool _isPlaying = false;
@@ -325,7 +450,7 @@ class _MapScreenState extends State<MapScreen> {
     super.initState();
     _poiFuture = ApiService.fetchNearbyPoi(lat: widget.lat, lon: widget.lon);
 
-    _audioPlayer.onPlayerStateChanged.listen((state) {
+    widget.audioPlayer.onPlayerStateChanged.listen((state) {
       if (mounted) {
         setState(() {
           _isPlaying = state == PlayerState.playing;
@@ -335,15 +460,9 @@ class _MapScreenState extends State<MapScreen> {
     });
   }
 
-  @override
-  void dispose() {
-    _audioPlayer.dispose();
-    super.dispose();
-  }
-
   Future<void> _playAudio(PoiModel item) async {
     if (_playingPoi?.id == item.id && _isPlaying) {
-      await _audioPlayer.pause();
+      await widget.audioPlayer.pause();
     } else {
       setState(() {
         _playingPoi = item;
@@ -356,14 +475,26 @@ class _MapScreenState extends State<MapScreen> {
       }
 
       try {
-        await _audioPlayer.stop();
-        await _audioPlayer.play(UrlSource(url));
+        await widget.audioPlayer.stop();
+        await widget.audioPlayer.play(UrlSource(url));
       } catch (e) {
         if (mounted) {
           setState(() => _isAudioLoading = false);
         }
       }
     }
+  }
+
+  void _openFullPlayerSheet(PoiModel item) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => AudioPlayerSheet(
+        poi: item,
+        audioPlayer: widget.audioPlayer,
+      ),
+    );
   }
 
   void _toggleFavorite(PoiModel item) {
@@ -415,57 +546,60 @@ class _MapScreenState extends State<MapScreen> {
               if (_playingPoi != null)
                 SafeArea(
                   top: false,
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2A2A2A),
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black45,
-                          blurRadius: 10,
-                          offset: Offset(0, -2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.audiotrack, color: Color(0xFFFF5722)),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                _playingPoi!.title,
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text(
-                                _isAudioLoading
-                                    ? 'Загрузка аудио...'
-                                    : (_isPlaying ? 'Воспроизведение...' : 'На паузе'),
-                                style: const TextStyle(fontSize: 12, color: Colors.grey),
-                              ),
-                            ],
+                  child: GestureDetector(
+                    onTap: () => _openFullPlayerSheet(_playingPoi!),
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2A2A2A),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black45,
+                            blurRadius: 10,
+                            offset: Offset(0, -2),
                           ),
-                        ),
-                        _isAudioLoading
-                            ? const SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Color(0xFFFF5722),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.audiotrack, color: Color(0xFFFF5722)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  _playingPoi!.title,
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                              )
-                            : IconButton(
-                                icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
-                                onPressed: () => _playAudio(_playingPoi!),
-                              ),
-                      ],
+                                Text(
+                                  _isAudioLoading
+                                      ? 'Загрузка аудио...'
+                                      : (_isPlaying ? 'Нажмите, чтобы открыть плеер' : 'На паузе'),
+                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                ),
+                              ],
+                            ),
+                          ),
+                          _isAudioLoading
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Color(0xFFFF5722),
+                                  ),
+                                )
+                              : IconButton(
+                                  icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
+                                  onPressed: () => _playAudio(_playingPoi!),
+                                ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -487,7 +621,6 @@ class _MapScreenState extends State<MapScreen> {
             initialZoom: 15.0,
           ),
           children: [
-            // Быстрый CDN карт CartoDB (Dark)
             TileLayer(
               urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
               subdomains: const ['a', 'b', 'c', 'd'],
@@ -575,7 +708,10 @@ class _MapScreenState extends State<MapScreen> {
                         backgroundColor: const Color(0xFFFF5722),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      onPressed: () => _playAudio(activePoi),
+                      onPressed: () {
+                        _playAudio(activePoi);
+                        _openFullPlayerSheet(activePoi);
+                      },
                       icon: _isAudioLoading && _playingPoi?.id == activePoi.id
                           ? const SizedBox(
                               width: 18,
@@ -641,7 +777,10 @@ class _MapScreenState extends State<MapScreen> {
                         minimumSize: const Size(double.infinity, 45),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      onPressed: () => _playAudio(item),
+                      onPressed: () {
+                        _playAudio(item);
+                        _openFullPlayerSheet(item);
+                      },
                       icon: isCurrentLoading
                           ? const SizedBox(
                               width: 18,
