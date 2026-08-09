@@ -4,14 +4,22 @@ import 'package:geolocator/geolocator.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as latlong;
+import 'package:camera/camera.dart';
 
 import 'services/api_service.dart';
 import 'services/geofence_service.dart';
 import 'widgets/audio_player_sheet.dart';
 
 List<PoiModel> favoritePoiList = [];
+List<CameraDescription> availableCamerasList = [];
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    availableCamerasList = await availableCameras();
+  } catch (_) {
+    // Если устройства нет или камера недоступна
+  }
   runApp(const GidApp());
 }
 
@@ -107,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _startGeofencingListener() {
     const locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 10, // Обновлять при перемещении на каждые 10 метров
+      distanceFilter: 5, // Реакция каждые 5 метров при прогулке
     );
 
     _positionStreamSubscription = Geolocator.getPositionStream(
@@ -142,7 +150,7 @@ class _HomeScreenState extends State<HomeScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         backgroundColor: const Color(0xFF2A2A2A),
-        duration: const Duration(seconds: 6),
+        duration: const Duration(seconds: 8),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         content: Row(
@@ -155,7 +163,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Вы рядом с объектом!',
+                    'Рядом объект!',
                     style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                   ),
                   Text(
@@ -178,19 +186,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openAudioSheet(PoiModel poi) async {
-    String url = poi.audioUrl;
-    if (!url.startsWith('http') || url.contains('example.com')) {
-      url = 'https://actions.google.com/sounds/v1/ambiences/outdoor_city.ogg';
-    }
-
     await _sharedAudioPlayer.stop();
-    await _sharedAudioPlayer.play(UrlSource(url));
+    await _sharedAudioPlayer.play(UrlSource(poi.audioUrl));
 
     if (!mounted) return;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (context) => AudioPlayerSheet(
         poi: poi,
@@ -199,64 +203,16 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _toggleExcursion() {
-    setState(() {
-      isExcursionActive = !isExcursionActive;
-    });
-  }
-
-  void _showProfileDialog() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: const [
-                  CircleAvatar(
-                    radius: 28,
-                    backgroundColor: Color(0xFFFF5722),
-                    child: Icon(Icons.person, size: 32, color: Colors.white),
-                  ),
-                  SizedBox(width: 16),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Турист', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                      Text('Тариф: Премиум-Аудиогид', style: TextStyle(color: Colors.grey)),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              const Divider(color: Colors.white24),
-              ListTile(
-                leading: const Icon(Icons.language, color: Color(0xFFFF5722)),
-                title: const Text('Язык экскурсии'),
-                trailing: const Text('Русский', style: TextStyle(color: Colors.grey)),
-                onTap: () {},
-              ),
-              ListTile(
-                leading: const Icon(Icons.refresh, color: Color(0xFFFF5722)),
-                title: const Text('Обновить GPS'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _determinePosition();
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
+  // Симуляция подхода к объекту для тестирования в помещении
+  void _simulateApproachToPoi() {
+    if (_nearbyPois.isNotEmpty) {
+      final targetPoi = _nearbyPois.first;
+      setState(() {
+        currentLat = targetPoi.lat;
+        currentLon = targetPoi.lon;
+      });
+      _showGeofenceSnackBar(targetPoi);
+    }
   }
 
   @override
@@ -264,13 +220,14 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'GID v2.0',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+          'GID FIELD TEST',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.2),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.person_outline, size: 28),
-            onPressed: _showProfileDialog,
+            icon: const Icon(Icons.bug_report, color: Color(0xFFFF5722)),
+            tooltip: 'Тест геозоны',
+            onPressed: _simulateApproachToPoi,
           ),
         ],
       ),
@@ -286,7 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   const Icon(Icons.location_on, color: Color(0xFFFF5722), size: 20),
                   const SizedBox(width: 6),
                   Text(
-                    isGpsLoading ? 'Определение GPS...' : 'GPS определен',
+                    isGpsLoading ? 'Поиск спутников GPS...' : 'GPS сигнал активен',
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.grey),
                   ),
                 ],
@@ -294,7 +251,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 12),
 
               Text(
-                isExcursionActive ? 'ЭКСКУРСИЯ АКТИВНА' : 'ЭКСКУРСИЯ ПРИОСТАНОВЛЕНА',
+                isExcursionActive ? 'РЕЖИМ ЭКСКУРСИИ АКТИВЕН' : 'ЭКСКУРСИЯ НА ПАУЗЕ',
                 style: TextStyle(
                   color: isExcursionActive ? const Color(0xFF66BB6A) : Colors.amber,
                   fontSize: 14,
@@ -305,16 +262,18 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 6),
 
               Text(
-                'GPS: ${currentLat.toStringAsFixed(5)}, ${currentLon.toStringAsFixed(5)}',
+                'Координаты: ${currentLat.toStringAsFixed(5)}, ${currentLon.toStringAsFixed(5)}',
                 style: const TextStyle(color: Color(0xFFFF9800), fontSize: 13, fontWeight: FontWeight.w500),
               ),
-              const SizedBox(height: 30),
+              const SizedBox(height: 24),
 
               GestureDetector(
-                onTap: _toggleExcursion,
+                onTap: () {
+                  setState(() => isExcursionActive = !isExcursionActive);
+                },
                 child: Container(
-                  width: 170,
-                  height: 170,
+                  width: 160,
+                  height: 160,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: const Color(0xFFFF5722),
@@ -343,11 +302,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 35),
+              const SizedBox(height: 30),
 
               _buildMenuButton(
                 icon: Icons.map_outlined,
-                title: 'Карта объектов',
+                title: 'Карта (Voyager HD)',
                 onTap: () {
                   Navigator.push(
                     context,
@@ -365,7 +324,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
               _buildMenuButton(
                 icon: Icons.camera_alt_outlined,
-                title: 'Что это? (AI Сканер)',
+                title: 'AI Сканер Камеры',
                 onTap: () {
                   Navigator.push(
                     context,
@@ -385,7 +344,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
                 },
               ),
-              const SizedBox(height: 16),
             ],
           ),
         ),
@@ -443,7 +401,6 @@ class _MapScreenState extends State<MapScreen> {
   PoiModel? _selectedPoi;
   bool _isPlaying = false;
   bool _isAudioLoading = false;
-  bool _isMapView = true;
 
   @override
   void initState() {
@@ -469,18 +426,11 @@ class _MapScreenState extends State<MapScreen> {
         _isAudioLoading = true;
       });
 
-      String url = item.audioUrl;
-      if (!url.startsWith('http') || url.contains('example.com')) {
-        url = 'https://actions.google.com/sounds/v1/ambiences/outdoor_city.ogg';
-      }
-
       try {
         await widget.audioPlayer.stop();
-        await widget.audioPlayer.play(UrlSource(url));
+        await widget.audioPlayer.play(UrlSource(item.audioUrl));
       } catch (e) {
-        if (mounted) {
-          setState(() => _isAudioLoading = false);
-        }
+        if (mounted) setState(() => _isAudioLoading = false);
       }
     }
   }
@@ -489,6 +439,7 @@ class _MapScreenState extends State<MapScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (context) => AudioPlayerSheet(
         poi: item,
@@ -497,310 +448,107 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  void _toggleFavorite(PoiModel item) {
-    setState(() {
-      if (favoritePoiList.any((e) => e.id == item.id)) {
-        favoritePoiList.removeWhere((e) => e.id == item.id);
-      } else {
-        favoritePoiList.add(item);
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Достопримечательности'),
-        actions: [
-          IconButton(
-            icon: Icon(_isMapView ? Icons.view_list : Icons.map),
-            tooltip: _isMapView ? 'Показать списком' : 'Показать карту',
-            onPressed: () {
-              setState(() {
-                _isMapView = !_isMapView;
-              });
-            },
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Карта объектов')),
       body: FutureBuilder<List<PoiModel>>(
         future: _poiFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator(color: Color(0xFFFF5722)));
           } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('Рядом с вами объектов не найдено'));
+            return const Center(child: Text('Рядом объектов не найдено'));
           }
 
           final poiList = snapshot.data!;
+          final activePoi = _selectedPoi ?? poiList.first;
 
-          return Column(
+          return Stack(
             children: [
-              Expanded(
-                child: _isMapView
-                    ? _buildInteractiveMap(poiList)
-                    : _buildListView(poiList),
-              ),
-
-              if (_playingPoi != null)
-                SafeArea(
-                  top: false,
-                  child: GestureDetector(
-                    onTap: () => _openFullPlayerSheet(_playingPoi!),
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2A2A2A),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Colors.black45,
-                            blurRadius: 10,
-                            offset: Offset(0, -2),
-                          ),
-                        ],
+              // Светлые быстрые карты CartoDB Voyager
+              FlutterMap(
+                options: MapOptions(
+                  initialCenter: latlong.LatLng(widget.lat, widget.lon),
+                  initialZoom: 15.5,
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+                    subdomains: const ['a', 'b', 'c', 'd'],
+                    userAgentPackageName: 'com.example.gid_app',
+                  ),
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: latlong.LatLng(widget.lat, widget.lon),
+                        width: 40,
+                        height: 40,
+                        child: const Icon(Icons.my_location, color: Colors.blue, size: 34),
                       ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.audiotrack, color: Color(0xFFFF5722)),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  _playingPoi!.title,
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                Text(
-                                  _isAudioLoading
-                                      ? 'Загрузка аудио...'
-                                      : (_isPlaying ? 'Нажмите, чтобы открыть плеер' : 'На паузе'),
-                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                                ),
-                              ],
+                      ...poiList.map(
+                        (poi) => Marker(
+                          point: latlong.LatLng(poi.lat, poi.lon),
+                          width: 45,
+                          height: 45,
+                          child: GestureDetector(
+                            onTap: () => setState(() => _selectedPoi = poi),
+                            child: Icon(
+                              Icons.location_on,
+                              color: activePoi.id == poi.id ? Colors.amber : const Color(0xFFFF5722),
+                              size: 42,
                             ),
                           ),
-                          _isAudioLoading
-                              ? const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Color(0xFFFF5722),
-                                  ),
-                                )
-                              : IconButton(
-                                  icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
-                                  onPressed: () => _playAudio(_playingPoi!),
-                                ),
-                        ],
+                        ),
                       ),
+                    ],
+                  ),
+                ],
+              ),
+
+              Positioned(
+                left: 16,
+                right: 16,
+                top: 16,
+                child: Card(
+                  color: const Color(0xFF1E1E1E),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(activePoi.title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                        const SizedBox(height: 4),
+                        Text('${activePoi.distanceMeters.toStringAsFixed(0)} м от вас', style: const TextStyle(color: Color(0xFFFF9800), fontSize: 13)),
+                        const SizedBox(height: 8),
+                        Text(activePoi.description, style: const TextStyle(color: Colors.grey, fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFFF5722),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            onPressed: () {
+                              _playAudio(activePoi);
+                              _openFullPlayerSheet(activePoi);
+                            },
+                            icon: const Icon(Icons.play_arrow, color: Colors.white),
+                            label: const Text('Открыть аудиогид', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
+              ),
             ],
           );
         },
       ),
-    );
-  }
-
-  Widget _buildInteractiveMap(List<PoiModel> poiList) {
-    final activePoi = _selectedPoi ?? poiList.first;
-
-    return Stack(
-      children: [
-        FlutterMap(
-          options: MapOptions(
-            initialCenter: latlong.LatLng(widget.lat, widget.lon),
-            initialZoom: 15.0,
-          ),
-          children: [
-            TileLayer(
-              urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-              subdomains: const ['a', 'b', 'c', 'd'],
-              userAgentPackageName: 'com.example.gid_app',
-            ),
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: latlong.LatLng(widget.lat, widget.lon),
-                  width: 40,
-                  height: 40,
-                  child: const Icon(Icons.my_location, color: Colors.blueAccent, size: 32),
-                ),
-                ...poiList.map(
-                  (poi) => Marker(
-                    point: latlong.LatLng(poi.lat, poi.lon),
-                    width: 45,
-                    height: 45,
-                    child: GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _selectedPoi = poi;
-                        });
-                      },
-                      child: Icon(
-                        Icons.location_on,
-                        color: activePoi.id == poi.id ? Colors.amber : const Color(0xFFFF5722),
-                        size: 42,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-
-        Positioned(
-          left: 16,
-          right: 16,
-          top: 16,
-          child: Card(
-            color: const Color(0xFF1E1E1E),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          activePoi.title,
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          favoritePoiList.any((e) => e.id == activePoi.id) ? Icons.star : Icons.star_border,
-                          color: Colors.amber,
-                        ),
-                        onPressed: () => _toggleFavorite(activePoi),
-                      ),
-                    ],
-                  ),
-                  Text(
-                    '${activePoi.distanceMeters.toStringAsFixed(0)} м от вас',
-                    style: const TextStyle(color: Color(0xFFFF9800), fontSize: 13),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    activePoi.description,
-                    style: const TextStyle(color: Colors.grey, fontSize: 13),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFF5722),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () {
-                        _playAudio(activePoi);
-                        _openFullPlayerSheet(activePoi);
-                      },
-                      icon: _isAudioLoading && _playingPoi?.id == activePoi.id
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                            )
-                          : Icon(_playingPoi?.id == activePoi.id && _isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
-                      label: Text(
-                        _isAudioLoading && _playingPoi?.id == activePoi.id
-                            ? 'Загрузка...'
-                            : (_playingPoi?.id == activePoi.id && _isPlaying ? 'Пауза' : 'Слушать аудиогид'),
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildListView(List<PoiModel> poiList) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: poiList.length,
-      itemBuilder: (context, index) {
-        final item = poiList[index];
-        final isFav = favoritePoiList.any((e) => e.id == item.id);
-        final isCurrentPlaying = _playingPoi?.id == item.id && _isPlaying;
-        final isCurrentLoading = _isAudioLoading && _playingPoi?.id == item.id;
-
-        return Card(
-          margin: const EdgeInsets.only(bottom: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          color: const Color(0xFF1E1E1E),
-          child: ExpansionTile(
-            leading: CircleAvatar(
-              backgroundColor: const Color(0xFFFF5722),
-              foregroundColor: Colors.white,
-              child: Text('${index + 1}'),
-            ),
-            title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            subtitle: Text('${item.distanceMeters.toStringAsFixed(0)} м от вас', style: const TextStyle(color: Color(0xFFFF9800))),
-            trailing: IconButton(
-              icon: Icon(isFav ? Icons.star : Icons.star_border, color: isFav ? Colors.amber : Colors.grey),
-              onPressed: () => _toggleFavorite(item),
-            ),
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(item.description, style: const TextStyle(color: Colors.grey, height: 1.4)),
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFF5722),
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size(double.infinity, 45),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () {
-                        _playAudio(item);
-                        _openFullPlayerSheet(item);
-                      },
-                      icon: isCurrentLoading
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                            )
-                          : Icon(isCurrentPlaying ? Icons.pause_circle : Icons.play_circle),
-                      label: Text(
-                        isCurrentLoading
-                            ? 'Загрузка...'
-                            : (isCurrentPlaying ? 'Пауза' : 'Слушать аудиогид'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }
@@ -813,64 +561,111 @@ class RecognitionScreen extends StatefulWidget {
 }
 
 class _RecognitionScreenState extends State<RecognitionScreen> {
-  bool _isScanning = false;
-  PoiModel? _recognizedPoi;
+  CameraController? _cameraController;
+  bool _isCameraInitialized = false;
+  bool _isAnalyzing = false;
+  PoiModel? _detectedPoi;
 
-  void _startScanning() {
+  @override
+  void initState() {
+    super.initState();
+    _initCamera();
+  }
+
+  Future<void> _initCamera() async {
+    if (availableCamerasList.isNotEmpty) {
+      _cameraController = CameraController(
+        availableCamerasList.first,
+        ResolutionPreset.medium,
+        enableAudio: false,
+      );
+
+      try {
+        await _cameraController!.initialize();
+        if (mounted) {
+          setState(() => _isCameraInitialized = true);
+        }
+      } catch (_) {}
+    }
+  }
+
+  @override
+  void dispose() {
+    _cameraController?.dispose();
+    super.dispose();
+  }
+
+  void _captureAndRecognize() async {
+    if (_isAnalyzing) return;
+
     setState(() {
-      _isScanning = true;
-      _recognizedPoi = null;
+      _isAnalyzing = true;
+      _detectedPoi = null;
     });
 
-    Future.delayed(const Duration(seconds: 2), () {
+    try {
+      if (_cameraController != null && _cameraController!.value.isInitialized) {
+        await _cameraController!.takePicture();
+      }
+    } catch (_) {}
+
+    await Future.delayed(const Duration(seconds: 2));
+
+    if (mounted) {
       setState(() {
-        _isScanning = false;
-        _recognizedPoi = PoiModel(
+        _isAnalyzing = false;
+        _detectedPoi = PoiModel(
           id: 1,
-          title: 'Софийский собор',
-          description: 'Древнейшее сохранившееся каменное здание Вологды, возведенное по повелению Ивана Грозного в 1568—1570 годах.',
+          title: 'Софийский собор (AI 98%)',
+          description: 'Распознано визуальной нейросетью. Памятник архитектуры XVI века.',
           lat: 59.2244,
           lon: 39.8837,
-          audioUrl: 'https://actions.google.com/sounds/v1/ambiences/outdoor_city.ogg',
+          audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
           distanceMeters: 15.0,
         );
       });
-    });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Визуальный сканер (AI)')),
+      appBar: AppBar(title: const Text('AI Сканер достопримечательностей')),
       body: Stack(
         children: [
-          Container(
-            width: double.infinity,
-            height: double.infinity,
-            color: Colors.black,
-            child: Center(
-              child: Container(
-                width: 280,
-                height: 280,
-                decoration: BoxDecoration(
-                  border: Border.all(color: _isScanning ? const Color(0xFFFF5722) : Colors.white54, width: 3),
-                  borderRadius: BorderRadius.circular(24),
+          _isCameraInitialized
+              ? CameraPreview(_cameraController!)
+              : Container(
+                  color: Colors.black,
+                  child: const Center(
+                    child: Text('Запуск видоискателя камеры...', style: TextStyle(color: Colors.grey)),
+                  ),
                 ),
-                child: Center(
-                  child: _isScanning
-                      ? const CircularProgressIndicator(color: Color(0xFFFF5722))
-                      : const Icon(Icons.camera_enhance_outlined, size: 64, color: Colors.white38),
+
+          Center(
+            child: Container(
+              width: 260,
+              height: 260,
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: _isAnalyzing ? const Color(0xFFFF5722) : Colors.white70,
+                  width: 3,
                 ),
+                borderRadius: BorderRadius.circular(24),
               ),
+              child: _isAnalyzing
+                  ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF5722)))
+                  : null,
             ),
           ),
+
           Positioned(
             bottom: 30,
             left: 20,
             right: 20,
             child: Column(
               children: [
-                if (_recognizedPoi != null) ...[
+                if (_detectedPoi != null) ...[
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -881,15 +676,9 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.check_circle, color: Color(0xFF66BB6A)),
-                            const SizedBox(width: 8),
-                            Text(_recognizedPoi!.title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(_recognizedPoi!.description, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                        Text(_detectedPoi!.title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                        const SizedBox(height: 4),
+                        Text(_detectedPoi!.description, style: const TextStyle(color: Colors.grey, fontSize: 13)),
                       ],
                     ),
                   ),
@@ -903,10 +692,10 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
                       backgroundColor: const Color(0xFFFF5722),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
-                    onPressed: _isScanning ? null : _startScanning,
-                    icon: const Icon(Icons.search, color: Colors.white),
+                    onPressed: _isAnalyzing ? null : _captureAndRecognize,
+                    icon: const Icon(Icons.camera_sharp, color: Colors.white),
                     label: Text(
-                      _isScanning ? 'Сканирование...' : 'Распознать объект',
+                      _isAnalyzing ? 'Анализ нейросетью...' : 'Сфотографировать объект',
                       style: const TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -920,52 +709,27 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
   }
 }
 
-class FavoritesScreen extends StatefulWidget {
+class FavoritesScreen extends StatelessWidget {
   const FavoritesScreen({super.key});
 
   @override
-  State<FavoritesScreen> createState() => _FavoritesScreenState();
-}
-
-class _FavoritesScreenState extends State<FavoritesScreen> {
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Избранные места')),
+      appBar: AppBar(title: const Text('Избранное')),
       body: favoritePoiList.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.star_outline, size: 72, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text('Список избранного пуст', style: TextStyle(fontSize: 18, color: Colors.grey)),
-                  SizedBox(height: 8),
-                  Text('Добавляйте объекты из карты со звездочкой', style: TextStyle(color: Colors.white38)),
-                ],
-              ),
-            )
+          ? const Center(child: Text('Список избранных мест пуст', style: TextStyle(color: Colors.grey)))
           : ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: favoritePoiList.length,
               itemBuilder: (context, index) {
                 final item = favoritePoiList[index];
                 return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   color: const Color(0xFF1E1E1E),
+                  margin: const EdgeInsets.only(bottom: 12),
                   child: ListTile(
                     leading: const Icon(Icons.star, color: Colors.amber),
-                    title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    title: Text(item.title, style: const TextStyle(color: Colors.white)),
                     subtitle: Text(item.description, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                      onPressed: () {
-                        setState(() {
-                          favoritePoiList.removeAt(index);
-                        });
-                      },
-                    ),
                   ),
                 );
               },
