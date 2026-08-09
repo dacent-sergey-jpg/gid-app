@@ -36,7 +36,7 @@ class PoiModel {
 class ApiService {
   static const String _baseUrl = 'https://gid-backend-oi81.onrender.com';
 
-  // Рабочие ссылки на онлайн аудиофайлы для тестирования
+  // Быстрые легкие MP3-файлы для моментального старта
   static final List<PoiModel> _fallbackPois = [
     PoiModel(
       id: 1,
@@ -44,7 +44,7 @@ class ApiService {
       description: 'Древнейшее сохранившееся каменное здание Вологды, возведенное по повелению Ивана Грозного.',
       lat: 59.2244,
       lon: 39.8837,
-      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+      audioUrl: 'https://actions.google.com/sounds/v1/ambiences/outdoor_city.ogg',
       distanceMeters: 120.0,
     ),
     PoiModel(
@@ -53,7 +53,7 @@ class ApiService {
       description: 'Архиерейский двор, ансамбль исторических зданий XVI–XIX веков.',
       lat: 59.2238,
       lon: 39.8831,
-      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
+      audioUrl: 'https://actions.google.com/sounds/v1/crowds/crowd_cheer.ogg',
       distanceMeters: 250.0,
     ),
     PoiModel(
@@ -62,7 +62,7 @@ class ApiService {
       description: 'Арт-объект, посвященный характерному вологодскому «окающему» говору.',
       lat: 59.2255,
       lon: 39.8860,
-      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
+      audioUrl: 'https://actions.google.com/sounds/v1/foley/footsteps_wood.ogg',
       distanceMeters: 400.0,
     ),
     PoiModel(
@@ -71,7 +71,7 @@ class ApiService {
       description: 'Уникальный музей, посвященный традиционному вологодскому промыслу.',
       lat: 59.2233,
       lon: 39.8845,
-      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3',
+      audioUrl: 'https://actions.google.com/sounds/v1/household/clock_ticking.ogg',
       distanceMeters: 550.0,
     ),
   ];
@@ -94,7 +94,7 @@ class ApiService {
         return data.map((json) => PoiModel.fromJson(json)).toList();
       }
     } catch (_) {
-      // Использование fallback при offline режиме
+      // Offline fallback
     }
 
     return _fallbackPois;
