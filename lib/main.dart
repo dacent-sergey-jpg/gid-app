@@ -55,16 +55,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _determinePosition() async {
     setState(() => isGpsLoading = true);
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       setState(() => isGpsLoading = false);
       return;
     }
 
-    permission = await Geolocator.checkPermission();
+    LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
@@ -342,13 +339,21 @@ class _MapScreenState extends State<MapScreen> {
     if (_playingPoi?.id == item.id && _isPlaying) {
       await _audioPlayer.pause();
     } else {
-      _playingPoi = item;
-      // Тестовый поток реального аудио если audioUrl пуст
-      final url = item.audioUrl.startsWith('http')
-          ? item.audioUrl
-          : 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
-      await _audioPlayer.stop();
-      await _audioPlayer.play(UrlSource(url));
+      setState(() {
+        _playingPoi = item;
+      });
+
+      String url = item.audioUrl;
+      if (!url.startsWith('http') || url.contains('example.com')) {
+        url = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+      }
+
+      try {
+        await _audioPlayer.stop();
+        await _audioPlayer.play(UrlSource(url));
+      } catch (e) {
+        debugPrint("Playback error: $e");
+      }
     }
   }
 
@@ -432,32 +437,51 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
 
+              // Плавающий плеер с поддержкой безопасной зоны Android
               if (_playingPoi != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF2A2A2A),
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.audiotrack, color: Color(0xFFFF5722)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(_playingPoi!.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                            Text(_isPlaying ? 'Воспроизведение...' : 'На паузе', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                          ],
+                SafeArea(
+                  top: false,
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2A2A2A),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black45,
+                          blurRadius: 10,
+                          offset: Offset(0, -2),
                         ),
-                      ),
-                      IconButton(
-                        icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
-                        onPressed: () => _playAudio(_playingPoi!),
-                      ),
-                    ],
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.audiotrack, color: Color(0xFFFF5722)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _playingPoi!.title,
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                _isPlaying ? 'Воспроизведение...' : 'На паузе',
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
+                          onPressed: () => _playAudio(_playingPoi!),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
             ],
