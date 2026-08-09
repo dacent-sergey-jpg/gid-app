@@ -36,6 +36,46 @@ class PoiModel {
 class ApiService {
   static const String _baseUrl = 'https://gid-backend-oi81.onrender.com';
 
+  // Резервный офлайн-список объектов на случай отсутствия сети
+  static final List<PoiModel> _fallbackPois = [
+    PoiModel(
+      id: 1,
+      title: 'Софийский собор',
+      description: 'Древнейшее сохранившееся каменное здание Вологды, возведенное по повелению Ивана Грозного.',
+      lat: 59.2244,
+      lon: 39.8837,
+      audioUrl: 'https://example.com/audio/sophia.mp3',
+      distanceMeters: 120.0,
+    ),
+    PoiModel(
+      id: 2,
+      title: 'Вологодский кремль',
+      description: 'Архиерейский двор, ансамбль исторических зданий XVI–XIX веков.',
+      lat: 59.2238,
+      lon: 39.8831,
+      audioUrl: 'https://example.com/audio/kremlin.mp3',
+      distanceMeters: 250.0,
+    ),
+    PoiModel(
+      id: 3,
+      title: 'Памятник букве «О»',
+      description: 'Арт-объект, посвященный характерному вологодскому «окающему» говору.',
+      lat: 59.2255,
+      lon: 39.8860,
+      audioUrl: 'https://example.com/audio/letter_o.mp3',
+      distanceMeters: 400.0,
+    ),
+    PoiModel(
+      id: 4,
+      title: 'Музей кружева',
+      description: 'Уникальный музей, посвященный традиционному вологодскому промыслу.',
+      lat: 59.2233,
+      lon: 39.8845,
+      audioUrl: 'https://example.com/audio/lace_museum.mp3',
+      distanceMeters: 550.0,
+    ),
+  ];
+
   static Future<List<PoiModel>> fetchNearbyPoi({
     required double lat,
     required double lon,
@@ -45,14 +85,18 @@ class ApiService {
       '$_baseUrl/api/v1/nearby?lat=$lat&lon=$lon&radius_meters=$radiusMeters',
     );
 
-    final response = await http.get(url);
+    try {
+      final response = await http.get(url).timeout(const Duration(seconds: 4));
 
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> body = json.decode(utf8.decode(response.bodyBytes));
-      final List<dynamic> data = body['data'];
-      return data.map((json) => PoiModel.fromJson(json)).toList();
-    } else {
-      throw Exception('Ошибка сервера: ${response.statusCode}');
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> body = json.decode(utf8.decode(response.bodyBytes));
+        final List<dynamic> data = body['data'];
+        return data.map((json) => PoiModel.fromJson(json)).toList();
+      }
+    } catch (_) {
+      // При отсутствии сети или спящем сервере возвращаем офлайн-данные
     }
+
+    return _fallbackPois;
   }
 }
