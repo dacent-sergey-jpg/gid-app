@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'services/api_service.dart';
 
-// Глобальный список избранного для хранения элементов в памяти
 List<PoiModel> favoritePoiList = [];
 
 void main() {
@@ -44,6 +45,46 @@ class _HomeScreenState extends State<HomeScreen> {
   bool isExcursionActive = true;
   double currentLat = 59.2244;
   double currentLon = 39.8837;
+  bool isGpsLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _determinePosition();
+  }
+
+  Future<void> _determinePosition() async {
+    setState(() => isGpsLoading = true);
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      setState(() => isGpsLoading = false);
+      return;
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        setState(() => isGpsLoading = false);
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      setState(() => isGpsLoading = false);
+      return;
+    }
+
+    final position = await Geolocator.getCurrentPosition();
+    setState(() {
+      currentLat = position.latitude;
+      currentLon = position.longitude;
+      isGpsLoading = false;
+    });
+  }
 
   void _toggleExcursion() {
     setState(() {
@@ -91,15 +132,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () {},
               ),
               ListTile(
-                leading: const Icon(Icons.volume_up, color: Color(0xFFFF5722)),
-                title: const Text('Автовоспроизведение аудио'),
-                trailing: Switch(
-                  value: true,
-                  activeColor: const Color(0xFFFF5722),
-                  onChanged: (val) {},
-                ),
+                leading: const Icon(Icons.refresh, color: Color(0xFFFF5722)),
+                title: const Text('Обновить GPS'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _determinePosition();
+                },
               ),
-              const SizedBox(height: 16),
             ],
           ),
         );
@@ -130,16 +169,16 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.location_on, color: Color(0xFFFF5722), size: 20),
-                  SizedBox(width: 6),
+                children: [
+                  const Icon(Icons.location_on, color: Color(0xFFFF5722), size: 20),
+                  const SizedBox(width: 6),
                   Text(
-                    'Вологда, Исторический центр',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.grey),
+                    isGpsLoading ? 'Определение GPS...' : 'GPS определен',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.grey),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
 
               Text(
                 isExcursionActive ? 'ЭКСКУРСИЯ АКТИВНА' : 'ЭКСКУРСИЯ ПРИОСТАНОВЛЕНА',
@@ -150,7 +189,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   letterSpacing: 1.1,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
 
               Text(
                 'GPS: ${currentLat.toStringAsFixed(5)}, ${currentLon.toStringAsFixed(5)}',
@@ -263,9 +302,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// ============================================================================
-// 1. ЭКРАН КАРТЫ И СПИСКА ОБЪЕКТОВ С АУДИОПЛЕЕРОМ
-// ============================================================================
 class MapScreen extends StatefulWidget {
   final double lat;
   final double lon;
@@ -278,6 +314,7 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   late Future<List<PoiModel>> _poiFuture;
+  final AudioPlayer _audioPlayer = AudioPlayer();
   PoiModel? _playingPoi;
   bool _isPlaying = false;
 
@@ -285,17 +322,34 @@ class _MapScreenState extends State<MapScreen> {
   void initState() {
     super.initState();
     _poiFuture = ApiService.fetchNearbyPoi(lat: widget.lat, lon: widget.lon);
-  }
 
-  void _playAudio(PoiModel item) {
-    setState(() {
-      if (_playingPoi?.id == item.id) {
-        _isPlaying = !_isPlaying;
-      } else {
-        _playingPoi = item;
-        _isPlaying = true;
+    _audioPlayer.onPlayerStateChanged.listen((state) {
+      if (mounted) {
+        setState(() {
+          _isPlaying = state == PlayerState.playing;
+        });
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _playAudio(PoiModel item) async {
+    if (_playingPoi?.id == item.id && _isPlaying) {
+      await _audioPlayer.pause();
+    } else {
+      _playingPoi = item;
+      // Тестовый поток реального аудио если audioUrl пуст
+      final url = item.audioUrl.startsWith('http')
+          ? item.audioUrl
+          : 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+      await _audioPlayer.stop();
+      await _audioPlayer.play(UrlSource(url));
+    }
   }
 
   void _toggleFavorite(PoiModel item) {
@@ -317,13 +371,6 @@ class _MapScreenState extends State<MapScreen> {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator(color: Color(0xFFFF5722)));
-          } else if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Text('Ошибка подключения к серверу: ${snapshot.error}', style: const TextStyle(color: Colors.red)),
-              ),
-            );
           } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return const Center(child: Text('Рядом с вами объектов не найдено'));
           }
@@ -373,7 +420,7 @@ class _MapScreenState extends State<MapScreen> {
                                   ),
                                   onPressed: () => _playAudio(item),
                                   icon: Icon(isCurrentPlaying ? Icons.pause_circle : Icons.play_circle),
-                                  label: Text(isCurrentPlaying ? 'Приостановить гида' : 'Слушать гида'),
+                                  label: Text(isCurrentPlaying ? 'Пауза' : 'Слушать аудиогид'),
                                 ),
                               ],
                             ),
@@ -385,7 +432,6 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
 
-              // Встроенный плеер внизу
               if (_playingPoi != null)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -403,7 +449,7 @@ class _MapScreenState extends State<MapScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(_playingPoi!.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                            const Text('Воспроизведение аудиогида...', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                            Text(_isPlaying ? 'Воспроизведение...' : 'На паузе', style: const TextStyle(fontSize: 12, color: Colors.grey)),
                           ],
                         ),
                       ),
@@ -422,9 +468,6 @@ class _MapScreenState extends State<MapScreen> {
   }
 }
 
-// ============================================================================
-// 2. ЭКРАН AI СКАНЕРА "ЧТО ЭТО?"
-// ============================================================================
 class RecognitionScreen extends StatefulWidget {
   const RecognitionScreen({super.key});
 
@@ -442,7 +485,6 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
       _recognizedPoi = null;
     });
 
-    // Имитация распознавания объекта нейросетью
     Future.delayed(const Duration(seconds: 2), () {
       setState(() {
         _isScanning = false;
@@ -452,7 +494,7 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
           description: 'Древнейшее сохранившееся каменное здание Вологды, возведенное по повелению Ивана Грозного в 1568—1570 годах.',
           lat: 59.2244,
           lon: 39.8837,
-          audioUrl: '',
+          audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
           distanceMeters: 15.0,
         );
       });
@@ -465,7 +507,6 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
       appBar: AppBar(title: const Text('Визуальный сканер (AI)')),
       body: Stack(
         children: [
-          // Видоискатель
           Container(
             width: double.infinity,
             height: double.infinity,
@@ -486,8 +527,6 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
               ),
             ),
           ),
-
-          // Кнопка и результат
           Positioned(
             bottom: 30,
             left: 20,
@@ -519,7 +558,6 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
                   ),
                   const SizedBox(height: 16),
                 ],
-
                 SizedBox(
                   width: double.infinity,
                   height: 55,
@@ -545,9 +583,6 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
   }
 }
 
-// ============================================================================
-// 3. ЭКРАН ИЗБРАННОГО
-// ============================================================================
 class FavoritesScreen extends StatefulWidget {
   const FavoritesScreen({super.key});
 
