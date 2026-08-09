@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart' as latlong;
 import 'services/api_service.dart';
 
 List<PoiModel> favoritePoiList = [];
@@ -313,7 +315,9 @@ class _MapScreenState extends State<MapScreen> {
   late Future<List<PoiModel>> _poiFuture;
   final AudioPlayer _audioPlayer = AudioPlayer();
   PoiModel? _playingPoi;
+  PoiModel? _selectedPoi;
   bool _isPlaying = false;
+  bool _isMapView = true; // Переключатель Карта / Список
 
   @override
   void initState() {
@@ -370,7 +374,20 @@ class _MapScreenState extends State<MapScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Карта и Достопримечательности')),
+      appBar: AppBar(
+        title: const Text('Достопримечательности'),
+        actions: [
+          IconButton(
+            icon: Icon(_isMapView ? Icons.view_list : Icons.map),
+            tooltip: _isMapView ? 'Показать списком' : 'Показать карту',
+            onPressed: () {
+              setState(() {
+                _isMapView = !_isMapView;
+              });
+            },
+          ),
+        ],
+      ),
       body: FutureBuilder<List<PoiModel>>(
         future: _poiFuture,
         builder: (context, snapshot) {
@@ -381,63 +398,16 @@ class _MapScreenState extends State<MapScreen> {
           }
 
           final poiList = snapshot.data!;
+
           return Column(
             children: [
               Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: poiList.length,
-                  itemBuilder: (context, index) {
-                    final item = poiList[index];
-                    final isFav = favoritePoiList.any((e) => e.id == item.id);
-                    final isCurrentPlaying = _playingPoi?.id == item.id && _isPlaying;
-
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      color: const Color(0xFF1E1E1E),
-                      child: ExpansionTile(
-                        leading: CircleAvatar(
-                          backgroundColor: const Color(0xFFFF5722),
-                          foregroundColor: Colors.white,
-                          child: Text('${index + 1}'),
-                        ),
-                        title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        subtitle: Text('${item.distanceMeters.toStringAsFixed(0)} м от вас', style: const TextStyle(color: Color(0xFFFF9800))),
-                        trailing: IconButton(
-                          icon: Icon(isFav ? Icons.star : Icons.star_border, color: isFav ? Colors.amber : Colors.grey),
-                          onPressed: () => _toggleFavorite(item),
-                        ),
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(item.description, style: const TextStyle(color: Colors.grey, height: 1.4)),
-                                const SizedBox(height: 16),
-                                ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFFFF5722),
-                                    foregroundColor: Colors.white,
-                                    minimumSize: const Size(double.infinity, 45),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  ),
-                                  onPressed: () => _playAudio(item),
-                                  icon: Icon(isCurrentPlaying ? Icons.pause_circle : Icons.play_circle),
-                                  label: Text(isCurrentPlaying ? 'Пауза' : 'Слушать аудиогид'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+                child: _isMapView
+                    ? _buildInteractiveMap(poiList)
+                    : _buildListView(poiList),
               ),
 
-              // Плавающий плеер с поддержкой безопасной зоны Android
+              // Плавающий плеер
               if (_playingPoi != null)
                 SafeArea(
                   top: false,
@@ -488,6 +458,177 @@ class _MapScreenState extends State<MapScreen> {
           );
         },
       ),
+    );
+  }
+
+  Widget _buildInteractiveMap(List<PoiModel> poiList) {
+    final activePoi = _selectedPoi ?? poiList.first;
+
+    return Stack(
+      children: [
+        FlutterMap(
+          options: MapOptions(
+            initialCenter: latlong.LatLng(widget.lat, widget.lon),
+            initialZoom: 15.0,
+          ),
+          children: [
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.example.gid_app',
+            ),
+            MarkerLayer(
+              markers: [
+                // Маркер вы (синий)
+                Marker(
+                  point: latlong.LatLng(widget.lat, widget.lon),
+                  width: 40,
+                  height: 40,
+                  child: const Icon(Icons.my_location, color: Colors.blueAccent, size: 32),
+                ),
+                // Маркеры достопримечательностей
+                ...poiList.map(
+                  (poi) => Marker(
+                    point: latlong.LatLng(poi.lat, poi.lon),
+                    width: 45,
+                    height: 45,
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _selectedPoi = poi;
+                        });
+                      },
+                      child: Icon(
+                        Icons.location_on,
+                        color: activePoi.id == poi.id ? Colors.amber : const Color(0xFFFF5722),
+                        size: 42,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+
+        // Выбранный объект поверх карты
+        Positioned(
+          left: 16,
+          right: 16,
+          top: 16,
+          child: Card(
+            color: const Color(0xFF1E1E1E),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          activePoi.title,
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          favoritePoiList.any((e) => e.id == activePoi.id) ? Icons.star : Icons.star_border,
+                          color: Colors.amber,
+                        ),
+                        onPressed: () => _toggleFavorite(activePoi),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    '${activePoi.distanceMeters.toStringAsFixed(0)} м от вас',
+                    style: const TextStyle(color: Color(0xFFFF9800), fontSize: 13),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    activePoi.description,
+                    style: const TextStyle(color: Colors.grey, fontSize: 13),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFF5722),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () => _playAudio(activePoi),
+                      icon: Icon(_playingPoi?.id == activePoi.id && _isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
+                      label: Text(
+                        _playingPoi?.id == activePoi.id && _isPlaying ? 'Пауза' : 'Слушать аудиогид',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildListView(List<PoiModel> poiList) {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: poiList.length,
+      itemBuilder: (context, index) {
+        final item = poiList[index];
+        final isFav = favoritePoiList.any((e) => e.id == item.id);
+        final isCurrentPlaying = _playingPoi?.id == item.id && _isPlaying;
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          color: const Color(0xFF1E1E1E),
+          child: ExpansionTile(
+            leading: CircleAvatar(
+              backgroundColor: const Color(0xFFFF5722),
+              foregroundColor: Colors.white,
+              child: Text('${index + 1}'),
+            ),
+            title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            subtitle: Text('${item.distanceMeters.toStringAsFixed(0)} м от вас', style: const TextStyle(color: Color(0xFFFF9800))),
+            trailing: IconButton(
+              icon: Icon(isFav ? Icons.star : Icons.star_border, color: isFav ? Colors.amber : Colors.grey),
+              onPressed: () => _toggleFavorite(item),
+            ),
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(item.description, style: const TextStyle(color: Colors.grey, height: 1.4)),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFF5722),
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(double.infinity, 45),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () => _playAudio(item),
+                      icon: Icon(isCurrentPlaying ? Icons.pause_circle : Icons.play_circle),
+                      label: Text(isCurrentPlaying ? 'Пауза' : 'Слушать аудиогид'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
