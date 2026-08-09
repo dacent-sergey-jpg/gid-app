@@ -317,7 +317,8 @@ class _MapScreenState extends State<MapScreen> {
   PoiModel? _playingPoi;
   PoiModel? _selectedPoi;
   bool _isPlaying = false;
-  bool _isMapView = true; // Переключатель Карта / Список
+  bool _isAudioLoading = false;
+  bool _isMapView = true;
 
   @override
   void initState() {
@@ -328,6 +329,7 @@ class _MapScreenState extends State<MapScreen> {
       if (mounted) {
         setState(() {
           _isPlaying = state == PlayerState.playing;
+          if (_isPlaying) _isAudioLoading = false;
         });
       }
     });
@@ -345,18 +347,21 @@ class _MapScreenState extends State<MapScreen> {
     } else {
       setState(() {
         _playingPoi = item;
+        _isAudioLoading = true;
       });
 
       String url = item.audioUrl;
       if (!url.startsWith('http') || url.contains('example.com')) {
-        url = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+        url = 'https://actions.google.com/sounds/v1/ambiences/outdoor_city.ogg';
       }
 
       try {
         await _audioPlayer.stop();
         await _audioPlayer.play(UrlSource(url));
       } catch (e) {
-        debugPrint("Playback error: $e");
+        if (mounted) {
+          setState(() => _isAudioLoading = false);
+        }
       }
     }
   }
@@ -407,7 +412,6 @@ class _MapScreenState extends State<MapScreen> {
                     : _buildListView(poiList),
               ),
 
-              // Плавающий плеер
               if (_playingPoi != null)
                 SafeArea(
                   top: false,
@@ -440,16 +444,27 @@ class _MapScreenState extends State<MapScreen> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                               Text(
-                                _isPlaying ? 'Воспроизведение...' : 'На паузе',
+                                _isAudioLoading
+                                    ? 'Загрузка аудио...'
+                                    : (_isPlaying ? 'Воспроизведение...' : 'На паузе'),
                                 style: const TextStyle(fontSize: 12, color: Colors.grey),
                               ),
                             ],
                           ),
                         ),
-                        IconButton(
-                          icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
-                          onPressed: () => _playAudio(_playingPoi!),
-                        ),
+                        _isAudioLoading
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Color(0xFFFF5722),
+                                ),
+                              )
+                            : IconButton(
+                                icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
+                                onPressed: () => _playAudio(_playingPoi!),
+                              ),
                       ],
                     ),
                   ),
@@ -472,20 +487,20 @@ class _MapScreenState extends State<MapScreen> {
             initialZoom: 15.0,
           ),
           children: [
+            // Быстрый CDN карт CartoDB (Dark)
             TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+              subdomains: const ['a', 'b', 'c', 'd'],
               userAgentPackageName: 'com.example.gid_app',
             ),
             MarkerLayer(
               markers: [
-                // Маркер вы (синий)
                 Marker(
                   point: latlong.LatLng(widget.lat, widget.lon),
                   width: 40,
                   height: 40,
                   child: const Icon(Icons.my_location, color: Colors.blueAccent, size: 32),
                 ),
-                // Маркеры достопримечательностей
                 ...poiList.map(
                   (poi) => Marker(
                     point: latlong.LatLng(poi.lat, poi.lon),
@@ -510,7 +525,6 @@ class _MapScreenState extends State<MapScreen> {
           ],
         ),
 
-        // Выбранный объект поверх карты
         Positioned(
           left: 16,
           right: 16,
@@ -562,9 +576,17 @@ class _MapScreenState extends State<MapScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                       onPressed: () => _playAudio(activePoi),
-                      icon: Icon(_playingPoi?.id == activePoi.id && _isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
+                      icon: _isAudioLoading && _playingPoi?.id == activePoi.id
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : Icon(_playingPoi?.id == activePoi.id && _isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
                       label: Text(
-                        _playingPoi?.id == activePoi.id && _isPlaying ? 'Пауза' : 'Слушать аудиогид',
+                        _isAudioLoading && _playingPoi?.id == activePoi.id
+                            ? 'Загрузка...'
+                            : (_playingPoi?.id == activePoi.id && _isPlaying ? 'Пауза' : 'Слушать аудиогид'),
                         style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                       ),
                     ),
@@ -586,6 +608,7 @@ class _MapScreenState extends State<MapScreen> {
         final item = poiList[index];
         final isFav = favoritePoiList.any((e) => e.id == item.id);
         final isCurrentPlaying = _playingPoi?.id == item.id && _isPlaying;
+        final isCurrentLoading = _isAudioLoading && _playingPoi?.id == item.id;
 
         return Card(
           margin: const EdgeInsets.only(bottom: 14),
@@ -619,8 +642,18 @@ class _MapScreenState extends State<MapScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                       onPressed: () => _playAudio(item),
-                      icon: Icon(isCurrentPlaying ? Icons.pause_circle : Icons.play_circle),
-                      label: Text(isCurrentPlaying ? 'Пауза' : 'Слушать аудиогид'),
+                      icon: isCurrentLoading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : Icon(isCurrentPlaying ? Icons.pause_circle : Icons.play_circle),
+                      label: Text(
+                        isCurrentLoading
+                            ? 'Загрузка...'
+                            : (isCurrentPlaying ? 'Пауза' : 'Слушать аудиогид'),
+                      ),
                     ),
                   ],
                 ),
@@ -659,7 +692,7 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
           description: 'Древнейшее сохранившееся каменное здание Вологды, возведенное по повелению Ивана Грозного в 1568—1570 годах.',
           lat: 59.2244,
           lon: 39.8837,
-          audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+          audioUrl: 'https://actions.google.com/sounds/v1/ambiences/outdoor_city.ogg',
           distanceMeters: 15.0,
         );
       });
