@@ -1,12 +1,12 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../models/poi_model.dart';
 
 class ApiService {
-  // Адрес вашего бэкенда на Render
   static const String baseUrl = 'https://gid-backend-oi81.onrender.com/api/v1';
 
-  /// Получение объектов поблизости из PostGIS по текущим координатам
-  static Future<List<dynamic>> fetchNearbyPois({
+  /// Получение объектов поблизости с сортировкой по расстоянию
+  static Future<List<PoiModel>> fetchNearbyPois({
     required double lat,
     required double lon,
     double radiusMeters = 5000.0,
@@ -17,7 +17,8 @@ class ApiService {
       final response = await http.get(url);
       if (response.statusCode == 200) {
         final data = json.decode(utf8.decode(response.bodyBytes));
-        return data['data'] ?? [];
+        final List<dynamic> list = data['data'] ?? [];
+        return list.map((json) => PoiModel.fromJson(json)).toList();
       } else {
         throw Exception('Ошибка сервера: ${response.statusCode}');
       }
@@ -27,7 +28,7 @@ class ApiService {
     }
   }
 
-  /// Запрос к AI-гиду (RAG + Gemini + Neural TTS)
+  /// Запрос к AI-гиду (RAG + Gemini / LLM + TTS)
   static Future<Map<String, dynamic>> askGuide({
     required int poiId,
     required String question,
