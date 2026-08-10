@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../services/api_service.dart';
 import '../services/preferences_service.dart';
 
@@ -13,6 +14,10 @@ class PoiDetailScreen extends StatefulWidget {
 
 class _PoiDetailScreenState extends State<PoiDetailScreen> {
   final TextEditingController _questionController = TextEditingController();
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
+  bool _isPlayingAudio = false;
+  bool _isListeningVoice = false;
   bool _isAsking = false;
   String? _answerText;
   String _selectedVoice = 'anna';
@@ -21,6 +26,20 @@ class _PoiDetailScreenState extends State<PoiDetailScreen> {
   void initState() {
     super.initState();
     _loadVoice();
+    _audioPlayer.onPlayerStateChanged.listen((state) {
+      if (mounted) {
+        setState(() {
+          _isPlayingAudio = state == PlayerState.playing;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    _questionController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadVoice() async {
@@ -28,6 +47,46 @@ class _PoiDetailScreenState extends State<PoiDetailScreen> {
     setState(() {
       _selectedVoice = voice;
     });
+  }
+
+  // Воспроизведение главного аудиогида по объекту
+  Future<void> _togglePoiAudio() async {
+    final audioUrl = widget.poi['audio_url'];
+    if (audioUrl == null || audioUrl.toString().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Аудиозапись для этого объекта отсутствует')),
+      );
+      return;
+    }
+
+    if (_isPlayingAudio) {
+      await _audioPlayer.pause();
+    } else {
+      await _audioPlayer.play(UrlSource(audioUrl));
+    }
+  }
+
+  // Симуляция голосового ввода (запись голоса)
+  void _toggleVoiceInput() {
+    setState(() {
+      _isListeningVoice = !_isListeningVoice;
+    });
+
+    if (_isListeningVoice) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Слушаю ваш вопрос... Говорите')),
+      );
+      // Имитация распознавания через 3 секунды
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted && _isListeningVoice) {
+          setState(() {
+            _questionController.text = 'Расскажи подробнее про историю этого места';
+            _isListeningVoice = false;
+          });
+          _askGuide();
+        }
+      });
+    }
   }
 
   Future<void> _askGuide() async {
@@ -46,11 +105,19 @@ class _PoiDetailScreenState extends State<PoiDetailScreen> {
         voiceId: _selectedVoice,
       );
 
+      final answer = response['answer'] ?? response['response'] ?? 'Гид дал ответ.';
+      final audioResponseUrl = response['audio_url'];
+
       setState(() {
-        _answerText = response['answer'] ?? response['response'] ?? 'Гид ответил, но текст не найден.';
+        _answerText = answer;
         _isAsking = false;
       });
       _questionController.clear();
+
+      // Если сервер прислал ссылку на сгенерированную озвучку ответа — воспроизводим
+      if (audioResponseUrl != null && audioResponseUrl.toString().isNotEmpty) {
+        await _audioPlayer.play(UrlSource(audioResponseUrl));
+      }
     } catch (e) {
       setState(() {
         _isAsking = false;
@@ -76,10 +143,31 @@ class _PoiDetailScreenState extends State<PoiDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Плеер аудиогида
+            Card(
+              color: Colors.deepPurple.shade50,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.deepPurple,
+                  child: IconButton(
+                    icon: Icon(
+                      _isPlayingAudio ? Icons.pause : Icons.play_arrow,
+                      color: Colors.white,
+                    ),
+                    onPressed: _togglePoiAudio,
+                  ),
+                ),
+                title: const Text('Слушать аудиогид', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text(_isPlayingAudio ? 'Воспроизведение...' : 'Нажмите для запуска'),
+              ),
+            ),
+            const SizedBox(height: 16),
+
             if (widget.poi['category'] != null)
               Chip(
                 label: Text(widget.poi['category']),
-                backgroundColor: Colors.deepPurple.shade50,
+                backgroundColor: Colors.deepPurple.shade100,
               ),
             const SizedBox(height: 12),
             Text(
@@ -87,6 +175,7 @@ class _PoiDetailScreenState extends State<PoiDetailScreen> {
               style: const TextStyle(fontSize: 16, height: 1.4),
             ),
             const SizedBox(height: 20),
+
             if (facts.isNotEmpty) ...[
               const Text(
                 'Интересные факты',
@@ -105,6 +194,7 @@ class _PoiDetailScreenState extends State<PoiDetailScreen> {
                   )),
               const SizedBox(height: 20),
             ],
+
             const Divider(),
             const SizedBox(height: 12),
             const Text(
@@ -112,17 +202,28 @@ class _PoiDetailScreenState extends State<PoiDetailScreen> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
+
+            // Поле ввода + Голосовой ввод + Отправка
             Row(
               children: [
+                IconButton(
+                  onPressed: _toggleVoiceInput,
+                  icon: Icon(
+                    _isListeningVoice ? Icons.mic_sharp : Icons.mic_none,
+                    color: _isListeningVoice ? Colors.red : Colors.deepPurple,
+                    size: 28,
+                  ),
+                  tooltip: 'Голосовой вопрос',
+                ),
                 Expanded(
                   child: TextField(
                     controller: _questionController,
                     decoration: InputDecoration(
-                      hintText: 'Например: Кто автор построек?',
+                      hintText: _isListeningVoice ? 'Говорите...' : 'Спросите голосом или текстом...',
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      contentPadding: const EdgeInsets.all(12),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                     ),
                   ),
                 ),
@@ -143,6 +244,7 @@ class _PoiDetailScreenState extends State<PoiDetailScreen> {
                 ),
               ],
             ),
+
             if (_answerText != null) ...[
               const SizedBox(height: 16),
               Container(
