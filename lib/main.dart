@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'screens/poi_detail_screen.dart';
+import 'screens/guide_selection_screen.dart';
 import 'services/api_service.dart';
 import 'services/preferences_service.dart';
-import 'screens/guide_selection_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -183,7 +184,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () {
-                          // Переход к деталям объекта
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => PoiDetailScreen(poi: poi),
+                            ),
+                          );
                         },
                       ),
                     );
