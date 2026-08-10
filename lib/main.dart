@@ -1,27 +1,29 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
-import 'screens/poi_detail_screen.dart';
 import 'screens/guide_selection_screen.dart';
-import 'services/api_service.dart';
+import 'screens/main_home_screen.dart';
 import 'services/preferences_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MyApp());
+  runApp(const GidApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+class GidApp extends StatelessWidget {
+  const GidApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'ГИД Приложение',
+      title: 'GID',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.deepPurple,
         useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFF9FAFB),
+        fontFamily: 'Roboto',
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF6C5CE7),
+          primary: const Color(0xFF6C5CE7),
+        ),
       ),
       home: const MainWrapper(),
     );
@@ -53,185 +55,20 @@ class _MainWrapperState extends State<MainWrapper> {
     });
   }
 
-  void _onGuideSelected() {
-    setState(() {
-      _isOnboardingDone = true;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (!_isOnboardingDone) {
-      return GuideSelectionScreen(onGuideSelected: _onGuideSelected);
-    }
-
-    return const HomeScreen();
-  }
-}
-
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({Key? key}) : super(key: key);
-
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  List<dynamic> _pois = [];
-  bool _loadingPois = true;
-  bool _showMap = true; // true = Карта, false = Список
-
-  // Координаты центра Вологды
-  final double _defaultLat = 59.224167;
-  final double _defaultLon = 39.883889;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchNearbyPlaces();
-  }
-
-  Future<void> _fetchNearbyPlaces() async {
-    setState(() {
-      _loadingPois = true;
-    });
-
-    try {
-      final places = await ApiService.fetchNearbyPois(
-        lat: _defaultLat,
-        lon: _defaultLon,
-        radiusMeters: 5000,
+      return GuideSelectionScreen(
+        onGuideSelected: () {
+          setState(() => _isOnboardingDone = true);
+        },
       );
-      setState(() {
-        _pois = places;
-        _loadingPois = false;
-      });
-    } catch (e) {
-      setState(() {
-        _loadingPois = false;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка загрузки мест: $e')),
-        );
-      }
     }
-  }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Аудиогид по Вологде'),
-        actions: [
-          IconButton(
-            icon: Icon(_showMap ? Icons.list : Icons.map),
-            tooltip: _showMap ? 'Список мест' : 'Показать карту',
-            onPressed: () {
-              setState(() {
-                _showMap = !_showMap;
-              });
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.person_outline),
-            tooltip: 'Сменить гида',
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => GuideSelectionScreen(
-                    onGuideSelected: () {
-                      Navigator.of(context).pop();
-                    },
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-      body: _loadingPois
-          ? const Center(child: CircularProgressIndicator())
-          : _showMap
-              ? FlutterMap(
-                  options: MapOptions(
-                    initialCenter: LatLng(_defaultLat, _defaultLon),
-                    initialZoom: 14.0,
-                  ),
-                  children: [
-                    TileLayer(
-                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      userAgentPackageName: 'com.example.gid_app',
-                    ),
-                    MarkerLayer(
-                      markers: _pois.map((poi) {
-                        final lat = (poi['lat'] as num?)?.toDouble() ?? _defaultLat;
-                        final lon = (poi['lon'] as num?)?.toDouble() ?? _defaultLon;
-
-                        return Marker(
-                          point: LatLng(lat, lon),
-                          width: 40,
-                          height: 40,
-                          child: GestureDetector(
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (context) => PoiDetailScreen(poi: poi),
-                                ),
-                              );
-                            },
-                            child: const Icon(
-                              Icons.location_on,
-                              color: Colors.red,
-                              size: 40,
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ],
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _pois.length,
-                  itemBuilder: (context, index) {
-                    final poi = _pois[index];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: ListTile(
-                        leading: const CircleAvatar(
-                          child: Icon(Icons.place),
-                        ),
-                        title: Text(
-                          poi['title'] ?? 'Без названия',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(
-                          poi['description'] ?? '',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => PoiDetailScreen(poi: poi),
-                            ),
-                          );
-                        },
-                      ),
-                    );
-                  },
-                ),
-    );
+    return const MainHomeScreen();
   }
 }
