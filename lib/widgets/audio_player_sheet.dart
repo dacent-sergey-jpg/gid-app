@@ -23,7 +23,7 @@ class _AudioPlayerSheetState extends State<AudioPlayerSheet> {
   Duration _position = Duration.zero;
   bool _isPlaying = false;
   double _playbackRate = 1.0;
-  
+
   final TextEditingController _questionController = TextEditingController();
   bool _isAsking = false;
   String? _aiAnswer;
@@ -159,7 +159,6 @@ class _AudioPlayerSheetState extends State<AudioPlayerSheet> {
             const Divider(color: Colors.white10),
             const SizedBox(height: 12),
 
-            // Голосовой / текстовый вопрос гиду (Раздел 11 ТЗ)
             Row(
               children: [
                 Expanded(
@@ -172,7 +171,7 @@ class _AudioPlayerSheetState extends State<AudioPlayerSheet> {
                       filled: true,
                       fillColor: Colors.white10,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                      contentPadding: const EdgeInsets.horizontal(16),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     ),
                   ),
                 ),
