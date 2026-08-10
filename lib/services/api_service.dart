@@ -2,10 +2,10 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  // Ваш развернутый бэкенд на Render
+  // Адрес вашего бэкенда на Render
   static const String baseUrl = 'https://gid-backend-oi81.onrender.com/api/v1';
 
-  /// Запрос объектов поблизости из PostGIS
+  /// Получение объектов поблизости из PostGIS по текущим координатам
   static Future<List<dynamic>> fetchNearbyPois({
     required double lat,
     required double lon,
@@ -19,15 +19,15 @@ class ApiService {
         final data = json.decode(utf8.decode(response.bodyBytes));
         return data['data'] ?? [];
       } else {
-        throw Exception('Ошибка бэкенда: ${response.statusCode}');
+        throw Exception('Ошибка сервера: ${response.statusCode}');
       }
     } catch (e) {
-      print('Ошибка при запросе точек: $e');
+      print('Ошибка при загрузке мест: $e');
       rethrow;
     }
   }
 
-  /// Задать вопрос гиду (RAG + LLM + TTS)
+  /// Запрос к AI-гиду (RAG + Gemini + Neural TTS)
   static Future<Map<String, dynamic>> askGuide({
     required int poiId,
     required String question,
@@ -52,7 +52,7 @@ class ApiService {
         throw Exception('Ошибка ответа гида: ${response.statusCode}');
       }
     } catch (e) {
-      print('Ошибка при вопросе гиду: $e');
+      print('Ошибка при обращении к гиду: $e');
       rethrow;
     }
   }
