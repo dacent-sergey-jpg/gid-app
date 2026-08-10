@@ -1,5 +1,5 @@
 import 'package:geolocator/geolocator.dart';
-import 'api_service.dart';
+import '../models/poi_model.dart';
 
 class GeofenceService {
   final Set<int> _triggeredPoiIds = {};
@@ -7,7 +7,7 @@ class GeofenceService {
 
   GeofenceService({this.triggerRadiusMeters = 30.0});
 
-  /// Проверяет списки объектов и возвращает тот, к которому подошел пользователь
+  /// Проверяет расстояние до ближайших мест и возвращает объект в радиусе срабатывания
   PoiModel? checkProximity({
     required double userLat,
     required double userLon,
