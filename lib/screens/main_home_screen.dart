@@ -95,7 +95,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
             SizedBox(width: 8),
             Text(
               'GID',
-              style: TextStyle(color: Colors.black, fontWeight: FontWeight.extrabold, fontSize: 24),
+              style: TextStyle(color: Colors.black, fontWeight: FontWeight.w800, fontSize: 24),
             ),
           ],
         ),
