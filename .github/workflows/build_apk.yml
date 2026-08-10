@@ -43,3 +43,4 @@ jobs:
         with:
           name: GID-MVP-Release
           path: build/app/outputs/flutter-apk/app-release.apk
+          
