@@ -122,7 +122,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Индикатор локации
               Row(
                 children: [
                   const Icon(Icons.location_on, color: Color(0xFFFF7675), size: 18),
@@ -135,7 +134,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               ),
               const SizedBox(height: 24),
 
-              // Карточка Главного ДЕЙСТВИЯ: НАЧАТЬ ЭКСКУРСИЮ
               Expanded(
                 child: Container(
                   width: double.infinity,
@@ -205,7 +203,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                             const Text(
                               'Нажмите, чтобы включить автоматический гид по ходу вашей прогулки',
                               textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.white90, fontSize: 13, height: 1.4),
+                              style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
                             ),
                           ],
                         ),
@@ -216,7 +214,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               ),
               const SizedBox(height: 20),
 
-              // Дополнительные кнопки из ТЗ
               Row(
                 children: [
                   _buildQuickButton(
