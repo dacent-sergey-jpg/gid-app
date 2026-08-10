@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'screens/poi_detail_screen.dart';
 import 'screens/guide_selection_screen.dart';
+import 'screens/photo_search_screen.dart';
 import 'services/api_service.dart';
 import 'services/preferences_service.dart';
 
@@ -69,7 +72,51 @@ class _MainWrapperState extends State<MainWrapper> {
       return GuideSelectionScreen(onGuideSelected: _onGuideSelected);
     }
 
-    return const HomeScreen();
+    return const RootNavigationScreen();
+  }
+}
+
+class RootNavigationScreen extends StatefulWidget {
+  const RootNavigationScreen({Key? key}) : super(key: key);
+
+  @override
+  State<RootNavigationScreen> createState() => _RootNavigationScreenState();
+}
+
+class _RootNavigationScreenState extends State<RootNavigationScreen> {
+  int _currentIndex = 0;
+
+  final List<Widget> _screens = [
+    const HomeScreen(),
+    const PhotoSearchScreen(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _screens[_currentIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        selectedItemColor: Colors.deepPurple,
+        onTap: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.map_outlined),
+            activeIcon: Icon(Icons.map),
+            label: 'Карта и Места',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.camera_alt_outlined),
+            activeIcon: Icon(Icons.camera_alt),
+            label: 'Поиск по фото',
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -83,25 +130,15 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   List<dynamic> _pois = [];
   bool _loadingPois = true;
-  String _selectedVoice = 'anna';
+  bool _showMap = true; // Переключатель Карта / Список
 
-  // Координаты по умолчанию (Центр Вологды: Софийский собор)
   final double _defaultLat = 59.224167;
   final double _defaultLon = 39.883889;
 
   @override
   void initState() {
     super.initState();
-    _loadInitialData();
-  }
-
-  Future<void> _loadInitialData() async {
-    final voice = await PreferencesService.getSelectedVoice();
-    setState(() {
-      _selectedVoice = voice;
-    });
-
-    await _fetchNearbyPlaces();
+    _fetchNearbyPlaces();
   }
 
   Future<void> _fetchNearbyPlaces() async {
@@ -125,7 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка загрузки точек: $e')),
+          SnackBar(content: Text('Ошибка загрузки мест: $e')),
         );
       }
     }
@@ -138,6 +175,15 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Аудиогид по Вологде'),
         actions: [
           IconButton(
+            icon: Icon(_showMap ? Icons.list : Icons.map),
+            tooltip: _showMap ? 'Список' : 'Карта',
+            onPressed: () {
+              setState(() {
+                _showMap = !_showMap;
+              });
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.person_outline),
             tooltip: 'Сменить гида',
             onPressed: () {
@@ -146,7 +192,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   builder: (context) => GuideSelectionScreen(
                     onGuideSelected: () {
                       Navigator.of(context).pop();
-                      _loadInitialData();
                     },
                   ),
                 ),
@@ -157,8 +202,45 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: _loadingPois
           ? const Center(child: CircularProgressIndicator())
-          : _pois.isEmpty
-              ? const Center(child: Text('Рядом не найдено объектов'))
+          : _showMap
+              ? FlutterMap(
+                  options: MapOptions(
+                    initialCenter: LatLng(_defaultLat, _defaultLon),
+                    initialZoom: 14.0,
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.example.gid_app',
+                    ),
+                    MarkerLayer(
+                      markers: _pois.map((poi) {
+                        final lat = (poi['lat'] as num?)?.toDouble() ?? _defaultLat;
+                        final lon = (poi['lon'] as num?)?.toDouble() ?? _defaultLon;
+
+                        return Marker(
+                          point: LatLng(lat, lon),
+                          width: 40,
+                          height: 40,
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => PoiDetailScreen(poi: poi),
+                                ),
+                              );
+                            },
+                            child: const Icon(
+                              Icons.location_on,
+                              color: Colors.red,
+                              size: 40,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                )
               : ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: _pois.length,
