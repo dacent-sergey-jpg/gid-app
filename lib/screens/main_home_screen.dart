@@ -68,7 +68,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => PoiDetailScreen(poi: item),
+                                builder: (_) => PoiDetailScreen(poi: item.toJson()),
                               ),
                             );
                           },
