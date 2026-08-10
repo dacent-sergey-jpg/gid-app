@@ -3,7 +3,6 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'screens/poi_detail_screen.dart';
 import 'screens/guide_selection_screen.dart';
-import 'screens/photo_search_screen.dart';
 import 'services/api_service.dart';
 import 'services/preferences_service.dart';
 
@@ -72,51 +71,7 @@ class _MainWrapperState extends State<MainWrapper> {
       return GuideSelectionScreen(onGuideSelected: _onGuideSelected);
     }
 
-    return const RootNavigationScreen();
-  }
-}
-
-class RootNavigationScreen extends StatefulWidget {
-  const RootNavigationScreen({Key? key}) : super(key: key);
-
-  @override
-  State<RootNavigationScreen> createState() => _RootNavigationScreenState();
-}
-
-class _RootNavigationScreenState extends State<RootNavigationScreen> {
-  int _currentIndex = 0;
-
-  final List<Widget> _screens = [
-    const HomeScreen(),
-    const PhotoSearchScreen(),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: _screens[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        selectedItemColor: Colors.deepPurple,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.map_outlined),
-            activeIcon: Icon(Icons.map),
-            label: 'Карта и Места',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.camera_alt_outlined),
-            activeIcon: Icon(Icons.camera_alt),
-            label: 'Поиск по фото',
-          ),
-        ],
-      ),
-    );
+    return const HomeScreen();
   }
 }
 
@@ -130,8 +85,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   List<dynamic> _pois = [];
   bool _loadingPois = true;
-  bool _showMap = true; // Переключатель Карта / Список
+  bool _showMap = true; // true = Карта, false = Список
 
+  // Координаты центра Вологды
   final double _defaultLat = 59.224167;
   final double _defaultLon = 39.883889;
 
@@ -176,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           IconButton(
             icon: Icon(_showMap ? Icons.list : Icons.map),
-            tooltip: _showMap ? 'Список' : 'Карта',
+            tooltip: _showMap ? 'Список мест' : 'Показать карту',
             onPressed: () {
               setState(() {
                 _showMap = !_showMap;
