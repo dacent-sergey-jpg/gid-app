@@ -122,7 +122,7 @@ class _PoiDetailScreenState extends State<PoiDetailScreen> {
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      contentPadding: const EdgeInsets.horizontal(12, vertical: 12),
+                      contentPadding: const EdgeInsets.all(12),
                     ),
                   ),
                 ),
