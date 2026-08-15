@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  // Продакшн URL вашего сервера на Render
+  // Продакшн URL сервера на Render
   static const String baseUrl = 'https://gid-backend-oi81.onrender.com';
 
   /// Запрос к Yandex AI на генерацию рассказа гида по координатам
@@ -62,46 +62,21 @@ class ApiService {
     }
   }
 
-  /// Метод askGuide с позиционными аргументами (используется в poi_detail_screen.dart)
-  static Future<Map<String, dynamic>> askGuide([
-    dynamic p1,
-    dynamic p2,
-    dynamic p3,
-    dynamic p4,
-    dynamic p5,
-  ]) async {
+  /// Запрос к гиду с поддержкой опциональных именованных параметров (используется в деталях POI)
+  static Future<Map<String, dynamic>> askGuide({
+    String? question,
+    String guideId = 'alexander',
+    String? poiId,
+    double? lat,
+    double? lng,
+  }) async {
     final url = Uri.parse('$baseUrl/api/ask');
-
-    String question = '';
-    String guideId = 'alexander';
-    String? poiId;
-    double? lat;
-    double? lng;
-
-    if (p1 != null) question = p1.toString();
-    if (p2 != null) {
-      if (p2 is num) {
-        lat = p2.toDouble();
-      } else {
-        guideId = p2.toString();
-      }
-    }
-    if (p3 != null) {
-      if (p3 is num) {
-        lng = p3.toDouble();
-      } else {
-        poiId = p3.toString();
-      }
-    }
-    if (p4 != null && p4 is num) lat = p4.toDouble();
-    if (p5 != null && p5 is num) lng = p5.toDouble();
-
     try {
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'question': question,
+          'question': question ?? '',
           'guide_id': guideId,
           if (poiId != null) 'poi_id': poiId,
           if (lat != null) 'lat': lat,
