@@ -45,37 +45,59 @@ class ApiService {
         ? question
         : 'Расскажи подробнее об этом месте.';
 
-    // Extended JSON payload matching Pydantic requirements (covers query/prompt/question/user_id)
-    final Map<String, dynamic> bodyData = {
+    // Clean primary payload matching exact FastAPI Pydantic schema required by backend
+    final Map<String, dynamic> primaryBody = {
       'guide_id': guideId,
-      'guide': guideId,
+      'user_question': promptText,
       'question': promptText,
-      'query': promptText,
-      'text': promptText,
-      'prompt': promptText,
-      'user_id': 'flutter_user_1',
+      'poi_id': (poiId != null && poiId.isNotEmpty) ? poiId : '0',
       'latitude': safeLat,
       'longitude': safeLng,
       'lat': safeLat,
       'lng': safeLng,
-      if (poiId != null && poiId.isNotEmpty) 'poi_id': poiId,
     };
 
     try {
-      debugPrint('Sending ask-guide request to: $url with body: ${jsonEncode(bodyData)}');
-      final response = await http
+      debugPrint('Sending ask-guide request to: $url with body: ${jsonEncode(primaryBody)}');
+      var response = await http
           .post(
             url,
-            headers: {'Content-Type': 'application/json; charset=utf-8'},
-            body: jsonEncode(bodyData),
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode(primaryBody),
           )
           .timeout(const Duration(seconds: 45));
+
+      if (response.statusCode == 422) {
+        debugPrint('Primary request failed with 422. Retrying with numeric poi_id fallback...');
+        final Map<String, dynamic> fallbackBody = {
+          'guide_id': guideId,
+          'user_question': promptText,
+          'question': promptText,
+          'poi_id': int.tryParse(poiId ?? '0') ?? 0,
+          'latitude': safeLat,
+          'longitude': safeLng,
+          'lat': safeLat,
+          'lng': safeLng,
+        };
+        response = await http
+            .post(
+              url,
+              headers: {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Accept': 'application/json',
+              },
+              body: jsonEncode(fallbackBody),
+            )
+            .timeout(const Duration(seconds: 30));
+      }
 
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         if (data is Map<String, dynamic>) return data;
       } else {
-        // Detailed parsing of FastAPI Pydantic validation error (422)
         String detailedError = 'Ошибка сервера (${response.statusCode})';
         try {
           final errBody = utf8.decode(response.bodyBytes);
@@ -92,7 +114,7 @@ class ApiService {
                 }
                 return e.toString();
               }).join(', ');
-              detailedError = 'Ошибка схемы Pydantic (422): не хватает полей [$missingFields]';
+              detailedError = 'Ошибка схемы Pydantic (422): [$missingFields]';
             } else {
               detailedError = 'Ошибка (422): ${detail.toString()}';
             }
