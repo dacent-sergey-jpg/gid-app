@@ -25,7 +25,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
   final MapController _mapController = MapController();
   final AudioPlayer _audioPlayer = AudioPlayer();
 
-  LatLng _currentLocation = const LatLng(59.2205, 39.8915); // Вологда по умолчанию
+  LatLng _currentLocation = const LatLng(59.2205, 39.8915); // Вологда
   bool _isLoading = false;
   String _guideResponseText = "Нажмите 'Спросить гида' или подойдите к достопримечательности.";
   String _selectedGuide = "alexander";
@@ -43,24 +43,28 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
   }
 
   Future<void> _determinePosition() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return;
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
 
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return;
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return;
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      setState(() {
+        _currentLocation = LatLng(position.latitude, position.longitude);
+      });
+
+      _mapController.move(_currentLocation, 16.0);
+    } catch (e) {
+      debugPrint("Ошибка геолокации: $e");
     }
-
-    Position position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    );
-
-    setState(() {
-      _currentLocation = LatLng(position.latitude, position.longitude);
-    });
-
-    _mapController.move(_currentLocation, 16.0);
   }
 
   Future<void> _requestAiStory() async {
@@ -77,7 +81,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
       );
 
       setState(() {
-        _guideResponseText = response['text'] ?? "Рассказ готов.";
+        _guideResponseText = response['text'] ?? response['answer'] ?? "Рассказ готов.";
       });
 
       if (response['audio_url'] != null && response['audio_url'].toString().isNotEmpty) {
@@ -96,6 +100,9 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Безопасный отступ снизу для навигационной панели Android/iOS
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Экскурсия GID'),
@@ -147,11 +154,11 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
           ),
 
           Positioned(
-            bottom: 20,
-            left: 16,
-            right: 16,
+            bottom: 16.0 + bottomPadding,
+            left: 16.0,
+            right: 16.0,
             child: Card(
-              elevation: 6,
+              elevation: 8,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
@@ -162,7 +169,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
                       _guideResponseText,
                       maxLines: 4,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 14),
+                      style: const TextStyle(fontSize: 14, height: 1.3),
                     ),
                     const SizedBox(height: 12),
                     ElevatedButton.icon(
@@ -176,7 +183,10 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
                           : const Icon(Icons.record_voice_over),
                       label: Text(_isLoading ? "Думает..." : "Спросить гида (Yandex AI)"),
                       style: ElevatedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(45),
+                        minimumSize: const Size.fromHeight(48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                     ),
                   ],
