@@ -17,7 +17,7 @@ class ApiService {
     return '$baseUrl$cleanPath';
   }
 
-  /// Проверка связи с бэкендом (будит спящий сервис на Render)
+  /// Проверка связи с бэкендом
   static Future<bool> pingServer() async {
     try {
       final response = await http
@@ -29,141 +29,115 @@ class ApiService {
     }
   }
 
-  /// Генерация рассказа гида по координатам (Yandex AI / OpenAI)
+  /// Главный метод общения с ИИ-гидом (POST /api/v1/ask-guide)
+  static Future<Map<String, dynamic>> askGuide({
+    required double lat,
+    required double lng,
+    String guideId = 'alexander',
+    String? question,
+    String? poiId,
+  }) async {
+    final url = Uri.parse('$baseUrl/api/v1/ask-guide');
+
+    final bodyData = {
+      'lat': lat,
+      'lng': lng,
+      'guide_id': guideId,
+      if (question != null && question.isNotEmpty) 'question': question,
+      if (poiId != null) 'poi_id': poiId,
+    };
+
+    try {
+      debugPrint('Отправка запроса к гиду: $url');
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(bodyData),
+          )
+          .timeout(const Duration(seconds: 45));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) return data;
+      } else {
+        debugPrint('Ошибка ask-guide: Код ${response.statusCode}, Тело: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('Исключение при вызове ask-guide: $e');
+    }
+
+    return {
+      'text': 'Не удалось получить ответ от гида. Убедитесь, что бэкенд на Render активен.',
+      'audio_url': null,
+    };
+  }
+
+  /// Совместимость: Генерация рассказа гида по координатам
   static Future<Map<String, dynamic>> generateGuideStory({
     required double lat,
     required double lng,
     required String guideId,
   }) async {
-    final bodyData = {
-      'lat': lat,
-      'lng': lng,
-      'guide_id': guideId,
-      'question': 'Расскажи, что интересного находится рядом со мной.',
-    };
-
-    final endpoints = ['/api/generate', '/generate', '/api/ask', '/ask'];
-
-    for (final path in endpoints) {
-      try {
-        debugPrint('Отправка запроса к: $baseUrl$path');
-        final response = await http
-            .post(
-              Uri.parse('$baseUrl$path'),
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode(bodyData),
-            )
-            // Увеличиваем таймаут до 45 секунд из-за возможного холодного старта Render
-            .timeout(const Duration(seconds: 45));
-
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          if (data is Map<String, dynamic>) return data;
-        } else {
-          debugPrint('Сервер $path вернул код: ${response.statusCode}, тело: ${response.body}');
-        }
-      } catch (e) {
-        debugPrint('Ошибка вызова $path: $e');
-      }
-    }
-
-    // Возвращаем информативное сообщение вместо молчаливой заглушки
-    return {
-      'text': 'Не удалось связаться с сервером ИИ. Возможно, сервер Render просыпается или отсутствуют API ключи на бэкенде.',
-      'audio_url': null,
-    };
+    return askGuide(
+      lat: lat,
+      lng: lng,
+      guideId: guideId,
+      question: 'Расскажи, что интересного находится рядом со мной.',
+    );
   }
 
-  /// Задать произвольный вопрос гиду
-  static Future<Map<String, dynamic>> askGuide({
-    String? question,
-    String guideId = 'alexander',
-    String? poiId,
-    double? lat,
-    double? lng,
+  /// Получение ближайших POI (GET /api/v1/nearby)
+  static Future<List<dynamic>> fetchNearbyPois({
+    required double lat,
+    required double lng,
+    double radiusKm = 5.0,
   }) async {
-    final bodyData = {
-      'question': question ?? 'Расскажи об этом месте',
-      'guide_id': guideId,
-      if (poiId != null) 'poi_id': poiId,
-      if (lat != null) 'lat': lat,
-      if (lng != null) 'lng': lng,
-    };
+    final url = Uri.parse('$baseUrl/api/v1/nearby?lat=$lat&lng=$lng&radius=$radiusKm');
 
-    final endpoints = ['/api/ask', '/ask', '/api/generate', '/generate'];
-
-    for (final path in endpoints) {
-      try {
-        final response = await http
-            .post(
-              Uri.parse('$baseUrl$path'),
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode(bodyData),
-            )
-            .timeout(const Duration(seconds: 45));
-
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          if (data is Map<String, dynamic>) return data;
-        }
-      } catch (e) {
-        debugPrint('Ошибка запроса к $path: $e');
+    try {
+      final response = await http.get(url).timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is List) return data;
+        if (data is Map && data.containsKey('items')) return data['items'] as List;
       }
+    } catch (e) {
+      debugPrint('Ошибка получения ближайших POI: $e');
     }
 
-    return {
-      'text': 'Сервер ИИ временно недоступен. Проверьте подключение к сети.',
-      'audio_url': null,
-    };
+    return [];
+  }
+
+  /// Загрузка списка POI (fallback)
+  static Future<List<dynamic>> fetchPois() async {
+    return fetchNearbyPois(lat: 59.2205, lng: 39.8915);
   }
 
   /// Распознавание изображения с камеры (AI Vision)
   static Future<Map<String, dynamic>> analyzeImage(File imageFile) async {
-    final endpoints = ['/api/vision', '/vision', '/api/recognize', '/recognize'];
+    final url = Uri.parse('$baseUrl/api/v1/ask-guide');
 
-    for (final path in endpoints) {
-      try {
-        debugPrint('Отправка фото на $baseUrl$path...');
-        final request = http.MultipartRequest('POST', Uri.parse('$baseUrl$path'));
-        request.files.add(
-          await http.MultipartFile.fromPath('file', imageFile.path),
-        );
+    try {
+      final request = http.MultipartRequest('POST', url);
+      request.files.add(
+        await http.MultipartFile.fromPath('file', imageFile.path),
+      );
 
-        final streamedResponse = await request.send().timeout(const Duration(seconds: 45));
-        final response = await http.Response.fromStream(streamedResponse);
+      final streamedResponse = await request.send().timeout(const Duration(seconds: 45));
+      final response = await http.Response.fromStream(streamedResponse);
 
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          if (data is Map<String, dynamic>) return data;
-        } else {
-          debugPrint('Ошибка Vision ($path): код ${response.statusCode}, тело: ${response.body}');
-        }
-      } catch (e) {
-        debugPrint('Ошибка отправки снимка в $path: $e');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) return data;
       }
+    } catch (e) {
+      debugPrint('Ошибка отправки изображения: $e');
     }
 
     return {
-      'description': 'Ошибка AI Vision: Сервер не ответил за 45 секунд. Убедитесь, что бэкенд активен на Render.',
+      'description': 'Не удалось распознать объект.',
       'audio_url': null,
     };
-  }
-
-  /// Загрузка списка POI (достопримечательностей)
-  static Future<List<dynamic>> fetchPois() async {
-    final endpoints = ['/api/pois', '/pois'];
-
-    for (final path in endpoints) {
-      try {
-        final response = await http.get(Uri.parse('$baseUrl$path')).timeout(const Duration(seconds: 15));
-        if (response.statusCode == 200) {
-          return jsonDecode(response.body) as List<dynamic>;
-        }
-      } catch (e) {
-        debugPrint('Ошибка получения POI из $path: $e');
-      }
-    }
-
-    return [];
   }
 }
