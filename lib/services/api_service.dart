@@ -17,6 +17,18 @@ class ApiService {
     return '$baseUrl$cleanPath';
   }
 
+  /// Проверка связи с бэкендом (будит спящий сервис на Render)
+  static Future<bool> pingServer() async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/health'))
+          .timeout(const Duration(seconds: 10));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Генерация рассказа гида по координатам (Yandex AI / OpenAI)
   static Future<Map<String, dynamic>> generateGuideStory({
     required double lat,
@@ -30,33 +42,34 @@ class ApiService {
       'question': 'Расскажи, что интересного находится рядом со мной.',
     };
 
-    // Перебираем эндпоинты бэкенда для предотвращения ошибки 404
     final endpoints = ['/api/generate', '/generate', '/api/ask', '/ask'];
 
     for (final path in endpoints) {
       try {
+        debugPrint('Отправка запроса к: $baseUrl$path');
         final response = await http
             .post(
               Uri.parse('$baseUrl$path'),
               headers: {'Content-Type': 'application/json'},
               body: jsonEncode(bodyData),
             )
-            .timeout(const Duration(seconds: 12));
+            // Увеличиваем таймаут до 45 секунд из-за возможного холодного старта Render
+            .timeout(const Duration(seconds: 45));
 
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
           if (data is Map<String, dynamic>) return data;
         } else {
-          debugPrint('Сервер $path вернул код: ${response.statusCode}');
+          debugPrint('Сервер $path вернул код: ${response.statusCode}, тело: ${response.body}');
         }
       } catch (e) {
         debugPrint('Ошибка вызова $path: $e');
       }
     }
 
-    // Если бэкенд недоступен или выдает ошибку, отдаем локальный ответ для стабильной работы
+    // Возвращаем информативное сообщение вместо молчаливой заглушки
     return {
-      'text': 'Привет! Вы находитесь в историческом центре Вологды. Ремёсла, деревянное зодчество и Кремлёвская площадь — главные символы этого замечательного города!',
+      'text': 'Не удалось связаться с сервером ИИ. Возможно, сервер Render просыпается или отсутствуют API ключи на бэкенде.',
       'audio_url': null,
     };
   }
@@ -87,7 +100,7 @@ class ApiService {
               headers: {'Content-Type': 'application/json'},
               body: jsonEncode(bodyData),
             )
-            .timeout(const Duration(seconds: 12));
+            .timeout(const Duration(seconds: 45));
 
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
@@ -98,9 +111,8 @@ class ApiService {
       }
     }
 
-    // Резервный ответ
     return {
-      'text': 'Увлекательный вопрос! Это место хранит богатую историю архитектуры и культуры Русского Севера.',
+      'text': 'Сервер ИИ временно недоступен. Проверьте подключение к сети.',
       'audio_url': null,
     };
   }
@@ -111,26 +123,28 @@ class ApiService {
 
     for (final path in endpoints) {
       try {
+        debugPrint('Отправка фото на $baseUrl$path...');
         final request = http.MultipartRequest('POST', Uri.parse('$baseUrl$path'));
         request.files.add(
           await http.MultipartFile.fromPath('file', imageFile.path),
         );
 
-        final streamedResponse = await request.send().timeout(const Duration(seconds: 15));
+        final streamedResponse = await request.send().timeout(const Duration(seconds: 45));
         final response = await http.Response.fromStream(streamedResponse);
 
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
           if (data is Map<String, dynamic>) return data;
+        } else {
+          debugPrint('Ошибка Vision ($path): код ${response.statusCode}, тело: ${response.body}');
         }
       } catch (e) {
         debugPrint('Ошибка отправки снимка в $path: $e');
       }
     }
 
-    // Резервный ответ для камеры при отсутствии интернета/ошибке сервера
     return {
-      'description': 'Объект успешно зафиксирован! Перед вами архитектурное сооружение.',
+      'description': 'Ошибка AI Vision: Сервер не ответил за 45 секунд. Убедитесь, что бэкенд активен на Render.',
       'audio_url': null,
     };
   }
@@ -141,7 +155,7 @@ class ApiService {
 
     for (final path in endpoints) {
       try {
-        final response = await http.get(Uri.parse('$baseUrl$path')).timeout(const Duration(seconds: 8));
+        final response = await http.get(Uri.parse('$baseUrl$path')).timeout(const Duration(seconds: 15));
         if (response.statusCode == 200) {
           return jsonDecode(response.body) as List<dynamic>;
         }
