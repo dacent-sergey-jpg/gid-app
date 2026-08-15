@@ -35,7 +35,7 @@ class ApiService {
     }
   }
 
-  /// Отправка текстового или голосового вопроса гиду
+  /// Отправка текстового вопроса гиду
   static Future<Map<String, dynamic>> askQuestion({
     required String question,
     required String guideId,
@@ -62,7 +62,7 @@ class ApiService {
     }
   }
 
-  /// Запрос к гиду с поддержкой опциональных именованных параметров (используется в деталях POI)
+  /// Запрос к гиду с поддержкой именованных параметров для POI
   static Future<Map<String, dynamic>> askGuide({
     String? question,
     String guideId = 'alexander',
