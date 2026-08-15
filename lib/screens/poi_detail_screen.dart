@@ -43,12 +43,17 @@ class _PoiDetailScreenState extends State<PoiDetailScreen> {
         poiId: poiId,
       );
 
+      final text = response['text'] ?? response['answer'] ?? "Ответ получен.";
+      final rawAudioUrl = response['audio_url'] ?? response['audio'] ?? response['voice_url'];
+      final formattedAudioUrl = ApiService.formatAudioUrl(rawAudioUrl?.toString());
+
       setState(() {
-        _guideAnswer = response['text'] ?? response['answer'] ?? "Ответ получен.";
+        _guideAnswer = text;
       });
 
-      if (response['audio_url'] != null && response['audio_url'].toString().isNotEmpty) {
-        await _audioPlayer.play(UrlSource(response['audio_url']));
+      if (formattedAudioUrl != null && formattedAudioUrl.isNotEmpty) {
+        await _audioPlayer.stop();
+        await _audioPlayer.play(UrlSource(formattedAudioUrl));
       }
     } catch (e) {
       setState(() {
