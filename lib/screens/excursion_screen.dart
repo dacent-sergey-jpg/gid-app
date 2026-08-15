@@ -6,7 +6,16 @@ import 'package:audioplayers/audioplayers.dart';
 import '../services/api_service.dart';
 
 class ExcursionScreen extends StatefulWidget {
-  const ExcursionScreen({Key? key}) : super(key: key);
+  final bool? startInMapView;
+  final bool? isMapView;
+  final Map<String, dynamic>? poi;
+
+  const ExcursionScreen({
+    Key? key,
+    this.startInMapView,
+    this.isMapView,
+    this.poi,
+  }) : super(key: key);
 
   @override
   State<ExcursionScreen> createState() => _ExcursionScreenState();
@@ -18,8 +27,8 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
 
   LatLng _currentLocation = const LatLng(59.2205, 39.8915); // Вологда по умолчанию
   bool _isLoading = false;
-  String _guideResponseText = "Нажмите 'Спросить гида' или поддойдите к достопримечательности.";
-  String _selectedGuide = "alexander"; // alexander, anna, mikhail
+  String _guideResponseText = "Нажмите 'Спросить гида' или подойдите к достопримечательности.";
+  String _selectedGuide = "alexander";
 
   @override
   void initState() {
@@ -33,7 +42,6 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
     super.dispose();
   }
 
-  /// Получение геопозиции пользователя
   Future<void> _determinePosition() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) return;
@@ -55,7 +63,6 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
     _mapController.move(_currentLocation, 16.0);
   }
 
-  /// Запрос к Yandex AI для получения аудиорассказа
   Future<void> _requestAiStory() async {
     setState(() {
       _isLoading = true;
@@ -73,7 +80,6 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
         _guideResponseText = response['text'] ?? "Рассказ готов.";
       });
 
-      // Воспроизведение озвучки Yandex SpeechKit при наличии URL
       if (response['audio_url'] != null && response['audio_url'].toString().isNotEmpty) {
         await _audioPlayer.play(UrlSource(response['audio_url']));
       }
@@ -111,7 +117,6 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
       ),
       body: Stack(
         children: [
-          // Оптимизированная карта с высокоскоростными тайлами CartoDB
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
@@ -120,7 +125,6 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
             ),
             children: [
               TileLayer(
-                // CartoDB Voyager — загружается в разы быстрее обычного OpenStreetMap
                 urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
                 subdomains: const ['a', 'b', 'c', 'd'],
                 userAgentPackageName: 'com.example.gid_app',
@@ -142,7 +146,6 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
             ],
           ),
 
-          // Панель ответа гида Yandex AI
           Positioned(
             bottom: 20,
             left: 16,
