@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import '../services/api_service.dart';
 
 class CameraVisionScreen extends StatefulWidget {
   const CameraVisionScreen({Key? key}) : super(key: key);
@@ -10,26 +12,35 @@ class CameraVisionScreen extends StatefulWidget {
 
 class _CameraVisionScreenState extends State<CameraVisionScreen> {
   CameraController? _controller;
-  bool _isInitializing = true;
+  List<CameraDescription>? _cameras;
+  bool _isCameraInitialized = false;
   bool _isAnalyzing = false;
+  String _resultText = "Наведите камеру на здание или памятник";
 
   @override
   void initState() {
     super.initState();
-    _setupCamera();
+    _initCamera();
   }
 
-  Future<void> _setupCamera() async {
+  Future<void> _initCamera() async {
     try {
-      final cameras = await availableCameras();
-      if (cameras.isNotEmpty) {
-        _controller = CameraController(cameras.first, ResolutionPreset.medium);
+      _cameras = await availableCameras();
+      if (_cameras != null && _cameras!.isNotEmpty) {
+        _controller = CameraController(
+          _cameras![0],
+          ResolutionPreset.medium,
+          enableAudio: false,
+        );
         await _controller!.initialize();
+        if (mounted) {
+          setState(() {
+            _isCameraInitialized = true;
+          });
+        }
       }
     } catch (e) {
-      print('Ошибка камеры: $e');
-    } finally {
-      if (mounted) setState(() => _isInitializing = false);
+      debugPrint("Ошибка инициализации камеры: $e");
     }
   }
 
@@ -39,97 +50,93 @@ class _CameraVisionScreenState extends State<CameraVisionScreen> {
     super.dispose();
   }
 
-  void _analyzeImage() {
-    setState(() => _isAnalyzing = true);
+  Future<void> _takePictureAndRecognize() async {
+    if (_controller == null || !_controller!.value.isInitialized || _isAnalyzing) return;
 
-    // Имитация распознавания Vision AI
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
-      setState(() => _isAnalyzing = false);
-
-      showModalBottomSheet(
-        context: context,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-        builder: (context) => Container(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.check_circle_outline, color: Colors.green, size: 48),
-              const SizedBox(height: 12),
-              const Text(
-                'Софийский собор',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Распознан памятник XVI века. Хотите прослушать историю?',
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF6C5CE7),
-                  minimumSize: const Size(double.infinity, 48),
-                ),
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.headphones, color: Colors.white),
-                label: const Text('Рассказать', style: TextStyle(color: Colors.white)),
-              )
-            ],
-          ),
-        ),
-      );
+    setState(() {
+      _isAnalyzing = true;
+      _resultText = "Анализирую изображение AI Vision...";
     });
+
+    try {
+      final XFile imageFile = await _controller!.takePicture();
+      final response = await ApiService.analyzeImage(File(imageFile.path));
+
+      setState(() {
+        _resultText = response['description'] ?? response['text'] ?? "Объект распознан!";
+      });
+    } catch (e) {
+      setState(() {
+        _resultText = "Ошибка распознавания: $e";
+      });
+    } finally {
+      setState(() {
+        _isAnalyzing = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
     return Scaffold(
-      backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('Что это?', style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.black,
-        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text('Что это? (AI Vision)'),
       ),
-      body: _isInitializing
-          ? const Center(child: CircularProgressIndicator())
-          : _controller == null || !_controller!.value.isInitialized
-              ? const Center(child: Text('Камера недоступна', style: TextStyle(color: Colors.white)))
-              : Stack(
+      body: Stack(
+        children: [
+          if (_isCameraInitialized && _controller != null)
+            Positioned.fill(
+              child: CameraPreview(_controller!),
+            )
+          else
+            const Center(child: CircularProgressIndicator()),
+
+          Positioned(
+            bottom: 20.0 + bottomPadding,
+            left: 16.0,
+            right: 16.0,
+            child: Card(
+              color: Colors.black.withOpacity(0.75),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    CameraPreview(_controller!),
-                    Center(
-                      child: Container(
-                        width: 260,
-                        height: 260,
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.white70, width: 2),
-                          borderRadius: BorderRadius.circular(20),
+                    Text(
+                      _resultText,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontSize: 15),
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      onPressed: _isAnalyzing ? null : _takePictureAndRecognize,
+                      icon: _isAnalyzing
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.camera_alt),
+                      label: Text(_isAnalyzing ? "Распознавание..." : "Распознать объект"),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                        backgroundColor: Colors.blueAccent,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
                       ),
                     ),
-                    Positioned(
-                      bottom: 40,
-                      left: 0,
-                      right: 0,
-                      child: Center(
-                        child: FloatingActionButton.extended(
-                          backgroundColor: const Color(0xFF6C5CE7),
-                          onPressed: _isAnalyzing ? null : _analyzeImage,
-                          icon: _isAnalyzing
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                                )
-                              : const Icon(Icons.search, color: Colors.white),
-                          label: Text(_isAnalyzing ? 'Распознаем...' : 'Распознать объект', style: const TextStyle(color: Colors.white)),
-                        ),
-                      ),
-                    )
                   ],
                 ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
