@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../services/api_service.dart';
 
 class CameraVisionScreen extends StatefulWidget {
@@ -13,6 +14,8 @@ class CameraVisionScreen extends StatefulWidget {
 class _CameraVisionScreenState extends State<CameraVisionScreen> {
   CameraController? _controller;
   List<CameraDescription>? _cameras;
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
   bool _isCameraInitialized = false;
   bool _isAnalyzing = false;
   String _resultText = "Наведите камеру на здание или памятник";
@@ -47,6 +50,7 @@ class _CameraVisionScreenState extends State<CameraVisionScreen> {
   @override
   void dispose() {
     _controller?.dispose();
+    _audioPlayer.dispose();
     super.dispose();
   }
 
@@ -62,9 +66,18 @@ class _CameraVisionScreenState extends State<CameraVisionScreen> {
       final XFile imageFile = await _controller!.takePicture();
       final response = await ApiService.analyzeImage(File(imageFile.path));
 
+      final text = response['description'] ?? response['text'] ?? response['answer'] ?? "Объект успешно распознан!";
+      final rawAudioUrl = response['audio_url'] ?? response['audio'] ?? response['voice_url'];
+      final formattedAudioUrl = ApiService.formatAudioUrl(rawAudioUrl?.toString());
+
       setState(() {
-        _resultText = response['description'] ?? response['text'] ?? "Объект распознан!";
+        _resultText = text;
       });
+
+      if (formattedAudioUrl != null && formattedAudioUrl.isNotEmpty) {
+        await _audioPlayer.stop();
+        await _audioPlayer.play(UrlSource(formattedAudioUrl));
+      }
     } catch (e) {
       setState(() {
         _resultText = "Ошибка распознавания: $e";
@@ -94,11 +107,11 @@ class _CameraVisionScreenState extends State<CameraVisionScreen> {
             const Center(child: CircularProgressIndicator()),
 
           Positioned(
-            bottom: 20.0 + bottomPadding,
+            bottom: 24.0 + bottomPadding,
             left: 16.0,
             right: 16.0,
             child: Card(
-              color: Colors.black.withOpacity(0.75),
+              color: Colors.black.withOpacity(0.8),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
