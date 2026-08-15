@@ -17,7 +17,7 @@ class ApiService {
     return '$baseUrl$cleanPath';
   }
 
-  /// Проверка связи с бэкендом
+  /// Проверка связи с бэкендом (GET /health)
   static Future<bool> pingServer() async {
     try {
       final response = await http
@@ -31,18 +31,18 @@ class ApiService {
 
   /// Главный метод общения с ИИ-гидом (POST /api/v1/ask-guide)
   static Future<Map<String, dynamic>> askGuide({
-    required double lat,
-    required double lng,
+    double? lat,
+    double? lng,
     String guideId = 'alexander',
     String? question,
     String? poiId,
   }) async {
     final url = Uri.parse('$baseUrl/api/v1/ask-guide');
 
-    final bodyData = {
-      'lat': lat,
-      'lng': lng,
+    final Map<String, dynamic> bodyData = {
       'guide_id': guideId,
+      if (lat != null) 'lat': lat,
+      if (lng != null) 'lng': lng,
       if (question != null && question.isNotEmpty) 'question': question,
       if (poiId != null) 'poi_id': poiId,
     };
@@ -73,7 +73,7 @@ class ApiService {
     };
   }
 
-  /// Совместимость: Генерация рассказа гида по координатам
+  /// Генерация рассказа гида по координатам
   static Future<Map<String, dynamic>> generateGuideStory({
     required double lat,
     required double lng,
