@@ -39,42 +39,45 @@ class ApiService {
   }) async {
     final url = Uri.parse('$baseUrl/api/v1/ask-guide');
 
-    // Flexible payload structure to support all variations of FastAPI Pydantic schemas
+    // Standardized payload matching Pydantic schema requirements
+    final double safeLat = lat ?? 59.2205; // Default coordinates (Vologda) if null
+    final double safeLng = lng ?? 39.8915;
+
     final Map<String, dynamic> bodyData = {
       'guide_id': guideId,
-      'guide': guideId,
-      if (lat != null) 'lat': lat,
-      if (lat != null) 'latitude': lat,
-      if (lng != null) 'lng': lng,
-      if (lng != null) 'longitude': lng,
       'question': (question != null && question.isNotEmpty)
           ? question
           : 'Расскажи подробнее об этом месте.',
-      if (poiId != null) 'poi_id': poiId,
+      'latitude': safeLat,
+      'longitude': safeLng,
+      'lat': safeLat,
+      'lng': safeLng,
+      if (poiId != null && poiId.isNotEmpty) 'poi_id': poiId,
     };
 
     try {
-      debugPrint('Sending ask-guide request to: $url');
+      debugPrint('Sending ask-guide request to: $url with body: ${jsonEncode(bodyData)}');
       final response = await http
           .post(
             url,
-            headers: {'Content-Type': 'application/json'},
+            headers: {'Content-Type': 'application/json; charset=utf-8'},
             body: jsonEncode(bodyData),
           )
           .timeout(const Duration(seconds: 45));
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
         if (data is Map<String, dynamic>) return data;
       } else {
-        debugPrint('Error ask-guide: Code ${response.statusCode}, Body: ${response.body}');
+        // Log detailed FastAPI 422 error response
+        debugPrint('HTTP Error ${response.statusCode}: ${response.body}');
       }
     } catch (e) {
       debugPrint('Exception calling ask-guide: $e');
     }
 
     return {
-      'text': 'Не удалось получить ответ от гида. Убедитесь, что бэкенд на Render активен.',
+      'text': 'Не удалось получить ответ от гида. Ошибка передачи данных (HTTP 422/500).',
       'audio_url': null,
     };
   }
@@ -104,7 +107,7 @@ class ApiService {
     try {
       final response = await http.get(url).timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
         if (data is List) return data;
         if (data is Map && data.containsKey('items')) return data['items'] as List;
       }
@@ -117,7 +120,8 @@ class ApiService {
 
   /// Recognize object via camera image upload (AI Vision)
   static Future<Map<String, dynamic>> analyzeImage(File imageFile) async {
-    final url = Uri.parse('$baseUrl/api/v1/ask-guide');
+    // Standard endpoint for vision analyze or ask-guide with image
+    final url = Uri.parse('$baseUrl/api/v1/analyze-image');
 
     try {
       final request = http.MultipartRequest('POST', url);
@@ -129,8 +133,10 @@ class ApiService {
       final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
         if (data is Map<String, dynamic>) return data;
+      } else {
+        debugPrint('Vision API Error ${response.statusCode}: ${response.body}');
       }
     } catch (e) {
       debugPrint('Error uploading image: $e');
