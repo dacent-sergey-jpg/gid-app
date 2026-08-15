@@ -6,7 +6,7 @@ class ApiService {
   // Продакшн URL вашего сервера на Render
   static const String baseUrl = 'https://gid-backend-oi81.onrender.com';
 
-  /// Запрос к Yandex AI на генерацию рассказа гида
+  /// Запрос к Yandex AI на генерацию рассказа гида по координатам
   static Future<Map<String, dynamic>> generateGuideStory({
     required double lat,
     required double lng,
@@ -62,6 +62,39 @@ class ApiService {
     }
   }
 
+  /// Метод askGuide (используется в poi_detail_screen.dart)
+  static Future<Map<String, dynamic>> askGuide({
+    String? question,
+    String? guideId,
+    String? poiId,
+    double? lat,
+    double? lng,
+  }) async {
+    final url = Uri.parse('$baseUrl/api/ask');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'question': question ?? '',
+          'guide_id': guideId ?? 'alexander',
+          if (poiId != null) 'poi_id': poiId,
+          if (lat != null) 'lat': lat,
+          if (lng != null) 'lng': lng,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Ошибка сервера: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Ошибка при вызове askGuide: $e');
+      rethrow;
+    }
+  }
+
   /// Отправка фотографии на AI Vision
   static Future<Map<String, dynamic>> analyzeImage(File imageFile) async {
     final url = Uri.parse('$baseUrl/api/vision');
@@ -82,6 +115,22 @@ class ApiService {
     } catch (e) {
       print('Ошибка при отправке фото: $e');
       rethrow;
+    }
+  }
+
+  /// Загрузка списка достопримечательностей
+  static Future<List<dynamic>> fetchPois() async {
+    final url = Uri.parse('$baseUrl/api/pois');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as List<dynamic>;
+      } else {
+        return [];
+      }
+    } catch (e) {
+      print('Ошибка получения списка POI: $e');
+      return [];
     }
   }
 }
