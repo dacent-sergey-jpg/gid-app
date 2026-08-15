@@ -1,42 +1,54 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class ApiService {
   static const String baseUrl = 'https://gid-backend-oi81.onrender.com';
+
+  /// Преобразует относительную ссылку на аудиофайл (/static/...) в полный URL
+  static String? formatAudioUrl(String? rawUrl) {
+    if (rawUrl == null || rawUrl.isEmpty) return null;
+    if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+      return rawUrl;
+    }
+    final cleanPath = rawUrl.startsWith('/') ? rawUrl : '/$rawUrl';
+    return '$baseUrl$cleanPath';
+  }
 
   static Future<Map<String, dynamic>> generateGuideStory({
     required double lat,
     required double lng,
     required String guideId,
   }) async {
-    // Сначала пробуем роут /api/generate
-    final urlGenerate = Uri.parse('$baseUrl/api/generate');
-    try {
-      final response = await http.post(
-        urlGenerate,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'lat': lat,
-          'lng': lng,
-          'guide_id': guideId,
-        }),
-      );
+    final bodyData = {
+      'lat': lat,
+      'lng': lng,
+      'guide_id': guideId,
+      'question': 'Расскажи, что интересного находится рядом со мной.',
+    };
 
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+    // Пробуем несколько возможных роутов сервера
+    final endpoints = ['/api/generate', '/generate', '/api/ask', '/ask'];
+
+    for (final path in endpoints) {
+      try {
+        final response = await http.post(
+          Uri.parse('$baseUrl$path'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(bodyData),
+        );
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          if (data is Map<String, dynamic>) return data;
+        }
+      } catch (e) {
+        debugPrint('Ошибка вызова $path: $e');
       }
-    } catch (_) {
-      // Игнорируем и идем в резервный эндпоинт
     }
 
-    // Если /api/generate вернул 404 или ошибку, отправляем в /api/ask
-    return await askGuide(
-      question: "Расскажи, что интересного находится вокруг меня.",
-      guideId: guideId,
-      lat: lat,
-      lng: lng,
-    );
+    throw Exception('Не удалось получить ответ гида (ошибка сервера)');
   }
 
   static Future<Map<String, dynamic>> askGuide({
@@ -46,65 +58,75 @@ class ApiService {
     double? lat,
     double? lng,
   }) async {
-    final url = Uri.parse('$baseUrl/api/ask');
-    try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'question': question ?? 'Расскажи об этом месте',
-          'guide_id': guideId,
-          if (poiId != null) 'poi_id': poiId,
-          if (lat != null) 'lat': lat,
-          if (lng != null) 'lng': lng,
-        }),
-      );
+    final bodyData = {
+      'question': question ?? 'Расскажи об этом месте',
+      'guide_id': guideId,
+      if (poiId != null) 'poi_id': poiId,
+      if (lat != null) 'lat': lat,
+      if (lng != null) 'lng': lng,
+    };
 
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        throw Exception('Ошибка сервера: ${response.statusCode}');
+    final endpoints = ['/api/ask', '/ask', '/api/generate', '/generate'];
+
+    for (final path in endpoints) {
+      try {
+        final response = await http.post(
+          Uri.parse('$baseUrl$path'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(bodyData),
+        );
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          if (data is Map<String, dynamic>) return data;
+        }
+      } catch (e) {
+        debugPrint('Ошибка запроса к $path: $e');
       }
-    } catch (e) {
-      print('Ошибка при вызове askGuide: $e');
-      rethrow;
     }
+
+    throw Exception('Сервер не отвечает на вопрос гиду (ошибка 404)');
   }
 
   static Future<Map<String, dynamic>> analyzeImage(File imageFile) async {
-    final url = Uri.parse('$baseUrl/api/vision');
-    try {
-      final request = http.MultipartRequest('POST', url);
-      request.files.add(
-        await http.MultipartFile.fromPath('file', imageFile.path),
-      );
+    final endpoints = ['/api/vision', '/vision', '/api/recognize', '/recognize'];
 
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
+    for (final path in endpoints) {
+      try {
+        final request = http.MultipartRequest('POST', Uri.parse('$baseUrl$path'));
+        request.files.add(
+          await http.MultipartFile.fromPath('file', imageFile.path),
+        );
 
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        throw Exception('Ошибка распознавания: ${response.statusCode}');
+        final streamedResponse = await request.send();
+        final response = await http.Response.fromStream(streamedResponse);
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          if (data is Map<String, dynamic>) return data;
+        }
+      } catch (e) {
+        debugPrint('Ошибка отправки снимка в $path: $e');
       }
-    } catch (e) {
-      print('Ошибка при отправке фото: $e');
-      rethrow;
     }
+
+    throw Exception('Ошибка распознавания снимка');
   }
 
   static Future<List<dynamic>> fetchPois() async {
-    final url = Uri.parse('$baseUrl/api/pois');
-    try {
-      final response = await http.get(url);
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as List<dynamic>;
-      } else {
-        return [];
+    final endpoints = ['/api/pois', '/pois'];
+
+    for (final path in endpoints) {
+      try {
+        final response = await http.get(Uri.parse('$baseUrl$path'));
+        if (response.statusCode == 200) {
+          return jsonDecode(response.body) as List<dynamic>;
+        }
+      } catch (e) {
+        debugPrint('Ошибка получения POI из $path: $e');
       }
-    } catch (e) {
-      print('Ошибка получения списка POI: $e');
-      return [];
     }
+
+    return [];
   }
 }
