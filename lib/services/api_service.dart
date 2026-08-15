@@ -39,15 +39,21 @@ class ApiService {
   }) async {
     final url = Uri.parse('$baseUrl/api/v1/ask-guide');
 
-    // Standardized payload matching Pydantic schema requirements
-    final double safeLat = lat ?? 59.2205; // Default coordinates (Vologda) if null
+    final double safeLat = lat ?? 59.2205; // Default coordinates (Vologda)
     final double safeLng = lng ?? 39.8915;
+    final String promptText = (question != null && question.isNotEmpty)
+        ? question
+        : 'Расскажи подробнее об этом месте.';
 
+    // Extended JSON payload matching Pydantic requirements (covers query/prompt/question/user_id)
     final Map<String, dynamic> bodyData = {
       'guide_id': guideId,
-      'question': (question != null && question.isNotEmpty)
-          ? question
-          : 'Расскажи подробнее об этом месте.',
+      'guide': guideId,
+      'question': promptText,
+      'query': promptText,
+      'text': promptText,
+      'prompt': promptText,
+      'user_id': 'flutter_user_1',
       'latitude': safeLat,
       'longitude': safeLng,
       'lat': safeLat,
@@ -69,15 +75,45 @@ class ApiService {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         if (data is Map<String, dynamic>) return data;
       } else {
-        // Log detailed FastAPI 422 error response
-        debugPrint('HTTP Error ${response.statusCode}: ${response.body}');
+        // Detailed parsing of FastAPI Pydantic validation error (422)
+        String detailedError = 'Ошибка сервера (${response.statusCode})';
+        try {
+          final errBody = utf8.decode(response.bodyBytes);
+          debugPrint('FastAPI Error response: $errBody');
+          final errJson = jsonDecode(errBody);
+          if (errJson is Map && errJson.containsKey('detail')) {
+            final detail = errJson['detail'];
+            if (detail is List) {
+              final missingFields = detail.map((e) {
+                if (e is Map && e.containsKey('loc')) {
+                  final locList = (e['loc'] as List).where((p) => p != 'body').join('.');
+                  final msg = e['msg'] ?? '';
+                  return '$locList: $msg';
+                }
+                return e.toString();
+              }).join(', ');
+              detailedError = 'Ошибка схемы Pydantic (422): не хватает полей [$missingFields]';
+            } else {
+              detailedError = 'Ошибка (422): ${detail.toString()}';
+            }
+          }
+        } catch (_) {}
+
+        return {
+          'text': detailedError,
+          'audio_url': null,
+        };
       }
     } catch (e) {
       debugPrint('Exception calling ask-guide: $e');
+      return {
+        'text': 'Ошибка соединения с сервером: $e',
+        'audio_url': null,
+      };
     }
 
     return {
-      'text': 'Не удалось получить ответ от гида. Ошибка передачи данных (HTTP 422/500).',
+      'text': 'Не удалось получить ответ от сервера.',
       'audio_url': null,
     };
   }
@@ -120,7 +156,6 @@ class ApiService {
 
   /// Recognize object via camera image upload (AI Vision)
   static Future<Map<String, dynamic>> analyzeImage(File imageFile) async {
-    // Standard endpoint for vision analyze or ask-guide with image
     final url = Uri.parse('$baseUrl/api/v1/analyze-image');
 
     try {
