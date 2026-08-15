@@ -1,5 +1,5 @@
 name: gid_app
-description: "Мобильное приложение-аудиогид GID"
+description: "Мобильное приложение-аудиогид GID с ИИ и GPS-навигацией"
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -27,3 +27,8 @@ flutter_lints: ^3.0.0
 
 flutter:
 uses-material-design: true
+
+assets:
+- assets/
+- assets/images/
+- assets/icons/
