@@ -57,11 +57,12 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      setState(() {
-        _currentLocation = LatLng(position.latitude, position.longitude);
-      });
-
-      _mapController.move(_currentLocation, 16.0);
+      if (mounted) {
+        setState(() {
+          _currentLocation = LatLng(position.latitude, position.longitude);
+        });
+        _mapController.move(_currentLocation, 16.0);
+      }
     } catch (e) {
       debugPrint("Ошибка геолокации: $e");
     }
@@ -80,12 +81,17 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
         guideId: _selectedGuide,
       );
 
+      final text = response['text'] ?? response['answer'] ?? response['description'] ?? "Рассказ готов.";
+      final rawAudioUrl = response['audio_url'] ?? response['audio'] ?? response['voice_url'];
+      final formattedAudioUrl = ApiService.formatAudioUrl(rawAudioUrl?.toString());
+
       setState(() {
-        _guideResponseText = response['text'] ?? response['answer'] ?? "Рассказ готов.";
+        _guideResponseText = text;
       });
 
-      if (response['audio_url'] != null && response['audio_url'].toString().isNotEmpty) {
-        await _audioPlayer.play(UrlSource(response['audio_url']));
+      if (formattedAudioUrl != null && formattedAudioUrl.isNotEmpty) {
+        await _audioPlayer.stop();
+        await _audioPlayer.play(UrlSource(formattedAudioUrl));
       }
     } catch (e) {
       setState(() {
@@ -100,7 +106,6 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Безопасный отступ снизу для навигационной панели Android/iOS
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
@@ -154,7 +159,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
           ),
 
           Positioned(
-            bottom: 16.0 + bottomPadding,
+            bottom: 20.0 + bottomPadding,
             left: 16.0,
             right: 16.0,
             child: Card(
