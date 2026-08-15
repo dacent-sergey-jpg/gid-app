@@ -3,19 +3,18 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  // Продакшн URL сервера на Render
   static const String baseUrl = 'https://gid-backend-oi81.onrender.com';
 
-  /// Запрос к Yandex AI на генерацию рассказа гида по координатам
   static Future<Map<String, dynamic>> generateGuideStory({
     required double lat,
     required double lng,
     required String guideId,
   }) async {
-    final url = Uri.parse('$baseUrl/api/generate');
+    // Сначала пробуем роут /api/generate
+    final urlGenerate = Uri.parse('$baseUrl/api/generate');
     try {
       final response = await http.post(
-        url,
+        urlGenerate,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'lat': lat,
@@ -26,43 +25,20 @@ class ApiService {
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
-      } else {
-        throw Exception('Ошибка сервера: ${response.statusCode}');
       }
-    } catch (e) {
-      print('Ошибка выполнения запроса generateGuideStory: $e');
-      rethrow;
+    } catch (_) {
+      // Игнорируем и идем в резервный эндпоинт
     }
+
+    // Если /api/generate вернул 404 или ошибку, отправляем в /api/ask
+    return await askGuide(
+      question: "Расскажи, что интересного находится вокруг меня.",
+      guideId: guideId,
+      lat: lat,
+      lng: lng,
+    );
   }
 
-  /// Отправка текстового вопроса гиду
-  static Future<Map<String, dynamic>> askQuestion({
-    required String question,
-    required String guideId,
-  }) async {
-    final url = Uri.parse('$baseUrl/api/ask');
-    try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'question': question,
-          'guide_id': guideId,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        throw Exception('Ошибка сервера: ${response.statusCode}');
-      }
-    } catch (e) {
-      print('Ошибка при вопросе гиду: $e');
-      rethrow;
-    }
-  }
-
-  /// Запрос к гиду с поддержкой именованных параметров для POI
   static Future<Map<String, dynamic>> askGuide({
     String? question,
     String guideId = 'alexander',
@@ -76,7 +52,7 @@ class ApiService {
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'question': question ?? '',
+          'question': question ?? 'Расскажи об этом месте',
           'guide_id': guideId,
           if (poiId != null) 'poi_id': poiId,
           if (lat != null) 'lat': lat,
@@ -95,7 +71,6 @@ class ApiService {
     }
   }
 
-  /// Отправка фотографии на AI Vision
   static Future<Map<String, dynamic>> analyzeImage(File imageFile) async {
     final url = Uri.parse('$baseUrl/api/vision');
     try {
@@ -118,7 +93,6 @@ class ApiService {
     }
   }
 
-  /// Загрузка списка достопримечательностей
   static Future<List<dynamic>> fetchPois() async {
     final url = Uri.parse('$baseUrl/api/pois');
     try {
