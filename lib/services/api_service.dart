@@ -4,10 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  // Базовый адрес вашего сервера на Render
+  // Base backend URL hosted on Render
   static const String baseUrl = 'https://gid-backend-oi81.onrender.com';
 
-  /// Преобразует относительную ссылку на аудиофайл (/static/...) в полный URL
+  /// Converts relative audio paths (/static/...) to full absolute URLs
   static String? formatAudioUrl(String? rawUrl) {
     if (rawUrl == null || rawUrl.isEmpty) return null;
     if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
@@ -17,7 +17,7 @@ class ApiService {
     return '$baseUrl$cleanPath';
   }
 
-  /// Проверка связи с бэкендом (GET /health)
+  /// Server health check (GET /health)
   static Future<bool> pingServer() async {
     try {
       final response = await http
@@ -29,7 +29,7 @@ class ApiService {
     }
   }
 
-  /// Главный метод общения с ИИ-гидом (POST /api/v1/ask-guide)
+  /// Primary method to query AI guide with location & question payload
   static Future<Map<String, dynamic>> askGuide({
     double? lat,
     double? lng,
@@ -39,16 +39,22 @@ class ApiService {
   }) async {
     final url = Uri.parse('$baseUrl/api/v1/ask-guide');
 
+    // Flexible payload structure to support all variations of FastAPI Pydantic schemas
     final Map<String, dynamic> bodyData = {
       'guide_id': guideId,
+      'guide': guideId,
       if (lat != null) 'lat': lat,
+      if (lat != null) 'latitude': lat,
       if (lng != null) 'lng': lng,
-      if (question != null && question.isNotEmpty) 'question': question,
+      if (lng != null) 'longitude': lng,
+      'question': (question != null && question.isNotEmpty)
+          ? question
+          : 'Расскажи подробнее об этом месте.',
       if (poiId != null) 'poi_id': poiId,
     };
 
     try {
-      debugPrint('Отправка запроса к гиду: $url');
+      debugPrint('Sending ask-guide request to: $url');
       final response = await http
           .post(
             url,
@@ -61,10 +67,10 @@ class ApiService {
         final data = jsonDecode(response.body);
         if (data is Map<String, dynamic>) return data;
       } else {
-        debugPrint('Ошибка ask-guide: Код ${response.statusCode}, Тело: ${response.body}');
+        debugPrint('Error ask-guide: Code ${response.statusCode}, Body: ${response.body}');
       }
     } catch (e) {
-      debugPrint('Исключение при вызове ask-guide: $e');
+      debugPrint('Exception calling ask-guide: $e');
     }
 
     return {
@@ -73,7 +79,7 @@ class ApiService {
     };
   }
 
-  /// Генерация рассказа гида по координатам
+  /// Generate story based on user's current coordinates
   static Future<Map<String, dynamic>> generateGuideStory({
     required double lat,
     required double lng,
@@ -87,7 +93,7 @@ class ApiService {
     );
   }
 
-  /// Получение ближайших POI (GET /api/v1/nearby)
+  /// Fetch POIs within specified radius (GET /api/v1/nearby)
   static Future<List<dynamic>> fetchNearbyPois({
     required double lat,
     required double lng,
@@ -103,18 +109,13 @@ class ApiService {
         if (data is Map && data.containsKey('items')) return data['items'] as List;
       }
     } catch (e) {
-      debugPrint('Ошибка получения ближайших POI: $e');
+      debugPrint('Error fetching nearby POIs: $e');
     }
 
     return [];
   }
 
-  /// Загрузка списка POI (fallback)
-  static Future<List<dynamic>> fetchPois() async {
-    return fetchNearbyPois(lat: 59.2205, lng: 39.8915);
-  }
-
-  /// Распознавание изображения с камеры (AI Vision)
+  /// Recognize object via camera image upload (AI Vision)
   static Future<Map<String, dynamic>> analyzeImage(File imageFile) async {
     final url = Uri.parse('$baseUrl/api/v1/ask-guide');
 
@@ -132,7 +133,7 @@ class ApiService {
         if (data is Map<String, dynamic>) return data;
       }
     } catch (e) {
-      debugPrint('Ошибка отправки изображения: $e');
+      debugPrint('Error uploading image: $e');
     }
 
     return {
