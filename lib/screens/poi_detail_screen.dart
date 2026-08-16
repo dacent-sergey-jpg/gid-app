@@ -5,7 +5,10 @@ import '../services/api_service.dart';
 class PoiDetailScreen extends StatefulWidget {
   final Map<String, dynamic> poi;
 
-  const PoiDetailScreen({Key? key, required this.poi}) : super(key: key);
+  const PoiDetailScreen({
+    super.key,
+    required this.poi,
+  });
 
   @override
   State<PoiDetailScreen> createState() => _PoiDetailScreenState();
@@ -47,6 +50,7 @@ class _PoiDetailScreenState extends State<PoiDetailScreen> {
       final rawAudioUrl = response['audio_url'] ?? response['audio'] ?? response['voice_url'];
       final formattedAudioUrl = ApiService.formatAudioUrl(rawAudioUrl?.toString());
 
+      if (!mounted) return;
       setState(() {
         _guideAnswer = text;
       });
@@ -56,13 +60,16 @@ class _PoiDetailScreenState extends State<PoiDetailScreen> {
         await _audioPlayer.play(UrlSource(formattedAudioUrl));
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _guideAnswer = "Ошибка при запросе: $e";
       });
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
