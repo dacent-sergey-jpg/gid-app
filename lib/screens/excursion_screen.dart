@@ -8,10 +8,10 @@ class ExcursionScreen extends StatefulWidget {
   final bool startInMapView;
 
   const ExcursionScreen({
-    Key? key,
+    super.key,
     this.poi,
     this.startInMapView = false,
-  }) : super(key: key);
+  });
 
   @override
   State<ExcursionScreen> createState() => _ExcursionScreenState();
@@ -19,13 +19,13 @@ class ExcursionScreen extends StatefulWidget {
 
 class _ExcursionScreenState extends State<ExcursionScreen> {
   final AudioPlayer _audioPlayer = AudioPlayer();
-  
+
   bool _isMapView = false;
   bool _isLoading = false;
   bool _isPlaying = false;
-  
+
   String _currentStory = 'Определение геопозиции и загрузка экскурсии...';
-  String _activeGuide = 'alexander';
+  final String _activeGuide = 'alexander';
   Position? _currentPosition;
 
   @override
@@ -46,7 +46,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
 
   Future<void> _startExcursion() async {
     setState(() => _isLoading = true);
-    
+
     try {
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
@@ -54,8 +54,11 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
       }
 
       Position position;
-      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
-        position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      if (permission == LocationPermission.whileInUse ||
+          permission == LocationPermission.always) {
+        position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+        );
       } else {
         position = Position(
           latitude: 59.2205,
@@ -71,6 +74,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
         );
       }
 
+      if (!mounted) return;
       setState(() => _currentPosition = position);
 
       final result = await ApiService.askGuide(
@@ -78,11 +82,12 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
         lng: position.longitude,
         guideId: _activeGuide,
         poiId: widget.poi?['id']?.toString(),
-        question: widget.poi != null 
+        question: widget.poi != null
             ? 'Расскажи историю про ${widget.poi!['title'] ?? 'это место'}'
             : 'Начни аудиоэкскурсию по текущему маршруту.',
       );
 
+      if (!mounted) return;
       setState(() {
         _currentStory = result['text'] ?? 'История недоступна.';
       });
@@ -93,11 +98,14 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
         await _audioPlayer.play(UrlSource(formattedAudio));
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _currentStory = 'Ошибка при попытке начать экскурсию: $e';
       });
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -145,7 +153,9 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
           Expanded(
             child: Card(
               elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(20.0),
                 child: SingleChildScrollView(
@@ -156,14 +166,26 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
                         children: [
                           CircleAvatar(
                             backgroundColor: Theme.of(context).primaryColor,
-                            child: const Icon(Icons.record_voice_over, color: Colors.white),
+                            child: const Icon(
+                              Icons.record_voice_over,
+                              color: Colors.white,
+                            ),
                           ),
                           const SizedBox(width: 12),
                           const Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('Рассказывает Гид', style: TextStyle(fontWeight: FontWeight.bold)),
-                              Text('Режим прогулки', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                              Text(
+                                'Рассказывает Гид',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                'Режим прогулки',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
                             ],
                           )
                         ],
@@ -195,7 +217,11 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.map_outlined, size: 80, color: Colors.blueGrey),
+                const Icon(
+                  Icons.map_outlined,
+                  size: 80,
+                  color: Colors.blueGrey,
+                ),
                 const SizedBox(height: 12),
                 Text(
                   _currentPosition != null
@@ -227,7 +253,11 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             IconButton(
-              icon: Icon(_isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill),
+              icon: Icon(
+                _isPlaying
+                    ? Icons.pause_circle_filled
+                    : Icons.play_circle_fill,
+              ),
               iconSize: 48,
               color: const Color(0xFF6C5CE7),
               onPressed: () async {
