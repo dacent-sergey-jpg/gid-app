@@ -4,6 +4,7 @@ import 'excursion_screen.dart';
 import 'camera_vision_screen.dart';
 import 'poi_detail_screen.dart';
 import '../models/poi_model.dart';
+import '../services/preferences_service.dart';
 
 class MainHomeScreen extends StatefulWidget {
   const MainHomeScreen({super.key});
@@ -13,7 +14,33 @@ class MainHomeScreen extends StatefulWidget {
 }
 
 class _MainHomeScreenState extends State<MainHomeScreen> {
-  final List<PoiModel> _favorites = [];
+  List<PoiModel> _favorites = [];
+  bool _isLoadingFavorites = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFavorites();
+  }
+
+  Future<void> _loadFavorites() async {
+    setState(() => _isLoadingFavorites = true);
+    try {
+      // Загрузка сохраненных POI из локального хранилища
+      final savedPois = await PreferencesService.getFavoritePois();
+      if (mounted) {
+        setState(() {
+          _favorites = savedPois;
+        });
+      }
+    } catch (_) {
+      // При отсутствии данных оставляем список пустым
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingFavorites = false);
+      }
+    }
+  }
 
   void _openFavorites() {
     showModalBottomSheet(
@@ -41,39 +68,88 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
-              '⭐ Избранные места',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  '⭐ Избранные места',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+                if (_favorites.isNotEmpty)
+                  Text(
+                    '${_favorites.length}',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 16),
             Expanded(
-              child: _favorites.isEmpty
-                  ? Center(
-                      child: Text(
-                        'У вас пока нет сохраненных мест',
-                        style: TextStyle(color: Colors.grey[600]),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: _favorites.length,
-                      itemBuilder: (context, index) {
-                        final item = _favorites[index];
-                        return ListTile(
-                          title: Text(item.title),
-                          subtitle: Text(item.description, maxLines: 1),
-                          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                          onTap: () {
-                            Navigator.pop(context);
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => PoiDetailScreen(poi: item.toJson()),
+              child: _isLoadingFavorites
+                  ? const Center(child: CircularProgressIndicator())
+                  : _favorites.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.star_border_rounded,
+                                size: 48,
+                                color: Colors.grey[400],
                               ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'У вас пока нет сохраненных мест',
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 15,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.separated(
+                          itemCount: _favorites.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (context, index) {
+                            final item = _favorites[index];
+                            return ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 4,
+                                horizontal: 8,
+                              ),
+                              title: Text(
+                                item.title,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              subtitle: Text(
+                                item.description,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              trailing: const Icon(
+                                Icons.arrow_forward_ios,
+                                size: 16,
+                              ),
+                              onTap: () {
+                                Navigator.pop(context);
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => PoiDetailScreen(
+                                      poi: item.toJson(),
+                                    ),
+                                  ),
+                                ).then((_) => _loadFavorites());
+                              },
                             );
                           },
-                        );
-                      },
-                    ),
+                        ),
             ),
           ],
         ),
@@ -94,13 +170,22 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
             SizedBox(width: 8),
             Text(
               'GID',
-              style: TextStyle(color: Colors.black, fontWeight: FontWeight.w800, fontSize: 24),
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.w800,
+                fontSize: 24,
+              ),
             ),
           ],
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.person_outline, color: Colors.black87, size: 28),
+            icon: const Icon(
+              Icons.person_outline,
+              color: Colors.black87,
+              size: 28,
+            ),
+            tooltip: 'Выбор гида',
             onPressed: () {
               Navigator.push(
                 context,
@@ -117,22 +202,32 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 20.0,
+            vertical: 12.0,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  const Icon(Icons.location_on, color: Color(0xFFFF7675), size: 18),
+                  const Icon(
+                    Icons.location_on,
+                    color: Color(0xFFFF7675),
+                    size: 18,
+                  ),
                   const SizedBox(width: 4),
                   Text(
                     'Вологда',
-                    style: TextStyle(fontSize: 16, color: Colors.grey[700], fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey[700],
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
               const SizedBox(height: 24),
-
               Expanded(
                 child: Container(
                   width: double.infinity,
@@ -158,7 +253,9 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                       onTap: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (_) => const ExcursionScreen()),
+                          MaterialPageRoute(
+                            builder: (_) => const ExcursionScreen(),
+                          ),
                         );
                       },
                       child: Padding(
@@ -202,7 +299,11 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                             const Text(
                               'Нажмите, чтобы включить автоматический гид по ходу вашей прогулки',
                               textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 13,
+                                height: 1.4,
+                              ),
                             ),
                           ],
                         ),
@@ -212,7 +313,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-
               Row(
                 children: [
                   _buildQuickButton(
@@ -224,7 +324,8 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => const ExcursionScreen(startInMapView: true),
+                          builder: (_) =>
+                              const ExcursionScreen(startInMapView: true),
                         ),
                       );
                     },
@@ -238,7 +339,9 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const CameraVisionScreen()),
+                        MaterialPageRoute(
+                          builder: (_) => const CameraVisionScreen(),
+                        ),
                       );
                     },
                   ),
@@ -293,7 +396,11 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 const SizedBox(height: 6),
                 Text(
                   label,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black87),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
                 ),
               ],
             ),
