@@ -1,40 +1,37 @@
 class PoiModel {
-  final int id;
+  final String id;
   final String title;
   final String description;
-  final double lat;
-  final double lon;
-  final String? category;
-  final String? audioUrl;
   final String? imageUrl;
+  final String? audioUrl;
+  final String? category;
+  final double lat;
+  final double lng;
   final List<String> facts;
-  final double distanceMeters;
 
   PoiModel({
     required this.id,
     required this.title,
     required this.description,
-    required this.lat,
-    required this.lon,
-    this.category,
-    this.audioUrl,
     this.imageUrl,
+    this.audioUrl,
+    this.category,
+    required this.lat,
+    required this.lng,
     this.facts = const [],
-    this.distanceMeters = 0.0,
   });
 
   factory PoiModel.fromJson(Map<String, dynamic> json) {
     return PoiModel(
-      id: json['id'] is int ? json['id'] : int.parse(json['id'].toString()),
-      title: json['title'] ?? 'Без названия',
+      id: (json['id'] ?? json['poi_id'] ?? '0').toString(),
+      title: json['title'] ?? json['name'] ?? 'Достопримечательность',
       description: json['description'] ?? '',
-      lat: ((json['latitude'] ?? json['lat']) as num).toDouble(),
-      lon: ((json['longitude'] ?? json['lon']) as num).toDouble(),
+      imageUrl: json['image_url'] ?? json['image'],
+      audioUrl: json['audio_url'] ?? json['audio'],
       category: json['category'],
-      audioUrl: json['audio_url'],
-      imageUrl: json['image_url'],
+      lat: (json['lat'] ?? json['latitude'] ?? 59.2205).toDouble(),
+      lng: (json['lng'] ?? json['longitude'] ?? 39.8915).toDouble(),
       facts: json['facts'] != null ? List<String>.from(json['facts']) : [],
-      distanceMeters: (json['distance_meters'] as num?)?.toDouble() ?? 0.0,
     );
   }
 
@@ -43,13 +40,12 @@ class PoiModel {
       'id': id,
       'title': title,
       'description': description,
-      'lat': lat,
-      'lon': lon,
-      'category': category,
-      'audio_url': audioUrl,
       'image_url': imageUrl,
+      'audio_url': audioUrl,
+      'category': category,
+      'lat': lat,
+      'lng': lng,
       'facts': facts,
-      'distance_meters': distanceMeters,
     };
   }
 }
