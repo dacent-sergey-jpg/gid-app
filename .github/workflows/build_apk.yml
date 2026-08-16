@@ -33,13 +33,39 @@ jobs:
       - name: Recreate Android platform folder
         run: flutter create --platforms=android .
 
-      - name: Force compileSdk 36 for app and all plugins
+      - name: Configure Android SDK 36 for app and plugins
         run: |
-          sed -i 's/compileSdkVersion .*/compileSdkVersion 36/' android/app/build.gradle 2>/dev/null || true
-          sed -i 's/compileSdk = .*/compileSdk = 36/' android/app/build.gradle.kts 2>/dev/null || true
-          sed -i 's/compileSdkVersion = .*/compileSdkVersion = 36/' android/app/build.gradle.kts 2>/dev/null || true
+          # 1. Обновляем главный модуль приложения
+          if [ -f "android/app/build.gradle.kts" ]; then
+            sed -i 's/compileSdk = .*/compileSdk = 36/' android/app/build.gradle.kts
+            sed -i 's/compileSdkVersion .*/compileSdkVersion 36/' android/app/build.gradle.kts
+          fi
+          if [ -f "android/app/build.gradle" ]; then
+            sed -i 's/compileSdkVersion .*/compileSdkVersion 36/' android/app/build.gradle
+            sed -i 's/compileSdk .*/compileSdk 36/' android/app/build.gradle
+          fi
 
-          cat << 'EOF' >> android/build.gradle
+          # 2. Переопределяем SDK для всех зависимых плагинов в корневом файле
+          if [ -f "android/build.gradle.kts" ]; then
+            cat << 'EOF' >> android/build.gradle.kts
+
+          subprojects {
+              afterEvaluate {
+                  val android = extensions.findByName("android")
+                  if (android != null) {
+                      try {
+                          val method = android.javaClass.getMethod("setCompileSdkVersion", Int::class.javaPrimitiveType)
+                          method.invoke(android, 36)
+                      } catch (e: Exception) {
+                          // Игнорируем, если проект не является Android-модулем
+                      }
+                  }
+              }
+          }
+          EOF
+          elif [ -f "android/build.gradle" ]; then
+            cat << 'EOF' >> android/build.gradle
+
           subprojects {
               afterEvaluate { project ->
                   if (project.hasProperty('android')) {
@@ -50,6 +76,7 @@ jobs:
               }
           }
           EOF
+          fi
 
       - name: Install dependencies
         run: flutter pub get
