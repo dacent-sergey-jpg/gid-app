@@ -2,32 +2,42 @@ import 'package:geolocator/geolocator.dart';
 import '../models/poi_model.dart';
 
 class GeofenceService {
-  static const double geofenceRadiusMeters = 50.0;
+  /// Дефолтный радиус геозоны по умолчанию (в метрах)
+  static const double defaultGeofenceRadiusMeters = 50.0;
 
-  bool isUserInGeofence(Position userPosition, PoiModel poi) {
-    double distanceInMeters = Geolocator.distanceBetween(
+  /// Вычисление дистанции до POI в метрах
+  double getDistanceToPoi(Position userPosition, PoiModel poi) {
+    return Geolocator.distanceBetween(
       userPosition.latitude,
       userPosition.longitude,
       poi.lat,
       poi.lng,
     );
-
-    return distanceInMeters <= geofenceRadiusMeters;
   }
 
-  PoiModel? findNearestPoi(Position userPosition, List<PoiModel> pois) {
+  /// Проверка, находится ли пользователь внутри геозоны POI
+  bool isUserInGeofence(
+    Position userPosition,
+    PoiModel poi, {
+    double radiusMeters = defaultGeofenceRadiusMeters,
+  }) {
+    final distance = getDistanceToPoi(userPosition, poi);
+    return distance <= radiusMeters;
+  }
+
+  /// Поиск ближайшего POI с опциональным ограничением максимального расстояния
+  PoiModel? findNearestPoi(
+    Position userPosition,
+    List<PoiModel> pois, {
+    double maxRadiusMeters = double.infinity,
+  }) {
     if (pois.isEmpty) return null;
 
     PoiModel? nearestPoi;
-    double minDistance = double.infinity;
+    double minDistance = maxRadiusMeters;
 
-    for (var poi in pois) {
-      double distance = Geolocator.distanceBetween(
-        userPosition.latitude,
-        userPosition.longitude,
-        poi.lat,
-        poi.lng,
-      );
+    for (final poi in pois) {
+      final distance = getDistanceToPoi(userPosition, poi);
 
       if (distance < minDistance) {
         minDistance = distance;
@@ -36,5 +46,16 @@ class GeofenceService {
     }
 
     return nearestPoi;
+  }
+
+  /// Получение всех POI, попадающих в геозону пользователя
+  List<PoiModel> findPoisInGeofence(
+    Position userPosition,
+    List<PoiModel> pois, {
+    double radiusMeters = defaultGeofenceRadiusMeters,
+  }) {
+    return pois
+        .where((poi) => isUserInGeofence(userPosition, poi, radiusMeters: radiusMeters))
+        .toList();
   }
 }
