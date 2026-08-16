@@ -1,7 +1,5 @@
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime, Boolean, JSON
-from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy import Column, Integer, String, Text, Float, DateTime, Boolean, JSON, func
 from geoalchemy2 import Geometry
-from datetime import datetime
 from database import Base
 
 
@@ -12,8 +10,8 @@ class POI(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255), nullable=False, index=True)
-    description = Column(Text, nullable=False)
-    category = Column(String(100), nullable=False, index=True)
+    description = Column(Text, nullable=True, default="")
+    category = Column(String(100), nullable=True, default="Общее", index=True)
     
     # PostGIS geometry: Point(longitude, latitude)
     location = Column(Geometry('POINT', srid=4326), nullable=False, index=True)
@@ -23,15 +21,15 @@ class POI(Base):
     image_url = Column(String(500), nullable=True)
     
     # Historical data
-    facts = Column(JSON, default=list)  # List of interesting facts
+    facts = Column(JSON, nullable=True, default=list)
     built_year = Column(Integer, nullable=True)
     historical_period = Column(String(100), nullable=True)
     
     # Metadata
-    priority = Column(Integer, default=5)  # 1-10 for ranking
+    priority = Column(Integer, default=5)
     is_active = Column(Boolean, default=True, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
     # Tracking
     times_visited = Column(Integer, default=0)
