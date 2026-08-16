@@ -33,9 +33,24 @@ jobs:
       - name: Recreate Android platform folder
         run: flutter create --platforms=android .
 
+      - name: Add Android Permissions to Manifest
+        run: |
+          python3 -c "
+          path = 'android/app/src/main/AndroidManifest.xml'
+          with open(path, 'r') as f:
+              content = f.read()
+          permissions = '''
+              <uses-permission android:name=\"android.permission.INTERNET\"/>
+              <uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\"/>
+              <uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\"/>
+          '''
+          content = content.replace('<manifest', '<manifest\n' + permissions)
+          with open(path, 'w') as f:
+              f.write(content)
+          "
+
       - name: Configure Android SDK 36 for app and plugins
         run: |
-          # 1. Обновляем главный модуль приложения
           if [ -f "android/app/build.gradle.kts" ]; then
             sed -i 's/compileSdk = .*/compileSdk = 36/' android/app/build.gradle.kts
             sed -i 's/compileSdkVersion .*/compileSdkVersion 36/' android/app/build.gradle.kts
@@ -45,7 +60,6 @@ jobs:
             sed -i 's/compileSdk .*/compileSdk 36/' android/app/build.gradle
           fi
 
-          # 2. Переопределяем SDK для плагинов с проверкой состояния executed
           if [ -f "android/build.gradle.kts" ]; then
             cat << 'EOF' >> android/build.gradle.kts
 
@@ -57,7 +71,7 @@ jobs:
                           val method = android.javaClass.getMethod("setCompileSdkVersion", Int::class.javaPrimitiveType)
                           method.invoke(android, 36)
                       } catch (e: Exception) {
-                          // Игнорируем
+                          // Ignore
                       }
                   }
               }
