@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -24,8 +25,10 @@ class ExcursionScreen extends StatefulWidget {
 class _ExcursionScreenState extends State<ExcursionScreen> {
   final MapController _mapController = MapController();
   final AudioPlayer _audioPlayer = AudioPlayer();
+  StreamSubscription<Position>? _positionSubscription;
 
-  LatLng _currentLocation = const LatLng(59.2205, 39.8915); // Вологда
+  LatLng _currentLocation = const LatLng(59.2205, 39.8915); // Вологда по умолчанию
+  LatLng? _poiLocation;
   bool _isLoading = false;
   String _guideResponseText = "Нажмите 'Спросить гида' или подойдите к достопримечательности.";
   String _selectedGuide = "alexander";
@@ -33,16 +36,29 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
   @override
   void initState() {
     super.initState();
-    _determinePosition();
+    _setupInitialPoi();
+    _startLocationTracking();
   }
 
   @override
   void dispose() {
+    _positionSubscription?.cancel();
     _audioPlayer.dispose();
     super.dispose();
   }
 
-  Future<void> _determinePosition() async {
+  void _setupInitialPoi() {
+    if (widget.poi != null) {
+      final lat = widget.poi!['lat'] ?? widget.poi!['latitude'];
+      final lon = widget.poi!['lon'] ?? widget.poi!['longitude'];
+      if (lat != null && lon != null) {
+        _poiLocation = LatLng((lat as num).toDouble(), (lon as num).toDouble());
+        _guideResponseText = widget.poi!['description'] ?? widget.poi!['title'] ?? _guideResponseText;
+      }
+    }
+  }
+
+  Future<void> _startLocationTracking() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) return;
@@ -53,6 +69,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
         if (permission == LocationPermission.denied) return;
       }
 
+      // Первичное получение координат
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
@@ -61,8 +78,22 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
         setState(() {
           _currentLocation = LatLng(position.latitude, position.longitude);
         });
-        _mapController.move(_currentLocation, 16.0);
+        _mapController.move(_poiLocation ?? _currentLocation, 16.0);
       }
+
+      // Отслеживание перемещений в реальном времени (каждые 5 метров)
+      _positionSubscription = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 5,
+        ),
+      ).listen((Position pos) {
+        if (mounted) {
+          setState(() {
+            _currentLocation = LatLng(pos.latitude, pos.longitude);
+          });
+        }
+      });
     } catch (e) {
       debugPrint("Ошибка геолокации: $e");
     }
@@ -108,6 +139,34 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
   Widget build(BuildContext context) {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
+    List<Marker> markers = [
+      Marker(
+        point: _currentLocation,
+        width: 40,
+        height: 40,
+        child: const Icon(
+          Icons.my_location,
+          color: Colors.blue,
+          size: 32,
+        ),
+      ),
+    ];
+
+    if (_poiLocation != null) {
+      markers.add(
+        Marker(
+          point: _poiLocation!,
+          width: 40,
+          height: 40,
+          child: const Icon(
+            Icons.location_on,
+            color: Colors.red,
+            size: 40,
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Экскурсия GID'),
@@ -132,7 +191,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: _currentLocation,
+              initialCenter: _poiLocation ?? _currentLocation,
               initialZoom: 15.0,
             ),
             children: [
@@ -141,23 +200,9 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
                 subdomains: const ['a', 'b', 'c', 'd'],
                 userAgentPackageName: 'com.example.gid_app',
               ),
-              MarkerLayer(
-                markers: [
-                  Marker(
-                    point: _currentLocation,
-                    width: 40,
-                    height: 40,
-                    child: const Icon(
-                      Icons.my_location,
-                      color: Colors.blue,
-                      size: 32,
-                    ),
-                  ),
-                ],
-              ),
+              MarkerLayer(markers: markers),
             ],
           ),
-
           Positioned(
             bottom: 20.0 + bottomPadding,
             left: 16.0,
