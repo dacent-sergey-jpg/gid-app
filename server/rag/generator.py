@@ -4,8 +4,7 @@ LLM Generator component for RAG system
 """
 
 import re
-from typing import List, Optional
-
+from typing import List, Optional, Dict, Any
 import httpx
 
 from config import YANDEX_API_KEY, YANDEX_FOLDER_ID, YANDEX_GPT_MODEL
@@ -24,7 +23,7 @@ class LLMGenerator:
     ):
         self.api_key = api_key or YANDEX_API_KEY
         self.folder_id = folder_id or YANDEX_FOLDER_ID
-        self.model = model or YANDEX_GPT_MODEL
+        self.model = model or YANDEX_GPT_MODEL or "yandexgpt/latest"
         self.enabled = bool(self.api_key and self.folder_id)
 
         if not self.enabled:
@@ -41,11 +40,6 @@ class LLMGenerator:
     ) -> str:
         """
         Generate answer to user question using YandexGPT.
-
-        Параметры ТЗ раздел 11 (Ответ гида):
-        - Использует верифицированные факты (RAG context)
-        - Ответ на русском языке
-        - Не придумывает факты вне контекста
         """
         if not self.enabled:
             return self._fallback_answer(context, user_question)
@@ -75,7 +69,7 @@ class LLMGenerator:
             "completionOptions": {
                 "stream": False,
                 "temperature": 0.5,
-                "maxTokens": str(max_tokens),
+                "maxTokens": max_tokens,  # Передаем целое число (int)
             },
             "messages": [
                 {"role": "system", "text": system_text},
@@ -83,7 +77,7 @@ class LLMGenerator:
             ],
         }
 
-        with httpx.Client(timeout=30.0) as client:
+        with httpx.Client(timeout=15.0) as client:
             response = client.post(YANDEX_COMPLETION_URL, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()
@@ -108,27 +102,32 @@ class LLMGenerator:
 
     def _fallback_answer(self, context: str, user_question: str) -> str:
         """Fallback answer when YandexGPT API is unavailable"""
-        facts_section = context.split("Интересные факты:")[1] if "Интересные факты:" in context else ""
         answer = f"Относительно вашего вопроса «{user_question}»: "
 
-        if "Построен" in context:
-            year_match = re.search(r"Построен/основан: (\d+)", context)
+        if "Построен" in context or "основан" in context:
+            year_match = re.search(r"(?:Построен|основан)[:\s]+(\d+)", context, re.IGNORECASE)
             if year_match:
                 answer += f"Это произошло в {year_match.group(1)} году. "
 
-        if facts_section.strip():
-            answer += "Вот несколько интересных фактов: " + facts_section.split("\n")[1]
+        facts_section = ""
+        if "Интересные факты:" in context:
+            facts_section = context.split("Интересные факты:")[1].strip()
+
+        # Безопасное извлечение строк без IndexError
+        lines = [line.strip("- ").strip() for line in facts_section.split("\n") if line.strip()]
+        if lines:
+            answer += f"Интересный факт: {lines[0]}"
         else:
-            answer += "Извините, но у меня недостаточно информации для полного ответа."
+            answer += "Извините, у меня пока недостаточно деталей для полного ответа."
 
         return answer.strip()
 
     def generate_route_description(self, pois: List[dict], start_poi: str) -> str:
         if not self.enabled:
-            return "Информация о маршруте недоступна"
+            return f"Маршрут из {len(pois)} мест, начиная с {start_poi}"
 
         poi_list = "\n".join(
-            [f"- {poi['title']}: {poi['description'][:100]}" for poi in pois]
+            [f"- {poi.get('title', 'Объект')}: {str(poi.get('description', ''))[:100]}" for poi in pois]
         )
         system_prompt = "Ты создаёшь описания туристических маршрутов для аудиогида."
         user_prompt = f"""Составь краткое (2-3 предложения) увлекательное описание маршрута на русском языке.
