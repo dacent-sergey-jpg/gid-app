@@ -24,9 +24,19 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Generate Android project & Add Permissions
+      - name: Ensure required directories exist
+        run: mkdir -p assets/images
+
+      - name: Generate Android project, Update SDK 34 & Add Permissions
         run: |
           flutter create --platforms=android .
+          
+          # Fix compileSdkVersion & targetSdkVersion for dependencies requiring API 34
+          GRADLE_FILE="android/app/build.gradle"
+          sed -i 's/compileSdkVersion.*/compileSdkVersion 34/' $GRADLE_FILE
+          sed -i 's/targetSdkVersion.*/targetSdkVersion 34/' $GRADLE_FILE
+          
+          # Add permissions to AndroidManifest.xml
           MANIFEST="android/app/src/main/AndroidManifest.xml"
           sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>' $MANIFEST
           sed -i '/<application/i \    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>' $MANIFEST
@@ -34,6 +44,9 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Run Flutter Analyzer
+        run: flutter analyze
 
       - name: Build APK
         run: flutter build apk --release
@@ -43,5 +56,3 @@ jobs:
         with:
           name: GID-MVP-Release
           path: build/app/outputs/flutter-apk/app-release.apk
-          
-          
