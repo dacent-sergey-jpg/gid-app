@@ -1,21 +1,16 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:geolocator/geolocator.dart';
 import '../services/api_service.dart';
 
 class ExcursionScreen extends StatefulWidget {
-  final bool? startInMapView;
-  final bool? isMapView;
   final Map<String, dynamic>? poi;
+  final bool startInMapView;
 
   const ExcursionScreen({
     Key? key,
-    this.startInMapView,
-    this.isMapView,
     this.poi,
+    this.startInMapView = false,
   }) : super(key: key);
 
   @override
@@ -23,228 +18,240 @@ class ExcursionScreen extends StatefulWidget {
 }
 
 class _ExcursionScreenState extends State<ExcursionScreen> {
-  final MapController _mapController = MapController();
   final AudioPlayer _audioPlayer = AudioPlayer();
-  StreamSubscription<Position>? _positionSubscription;
-
-  LatLng _currentLocation = const LatLng(59.2205, 39.8915); // Вологда по умолчанию
-  LatLng? _poiLocation;
+  
+  bool _isMapView = false;
   bool _isLoading = false;
-  String _guideResponseText = "Нажмите 'Спросить гида' или подойдите к достопримечательности.";
-  String _selectedGuide = "alexander";
+  bool _isPlaying = false;
+  
+  String _currentStory = 'Определение геопозиции и загрузка экскурсии...';
+  String _activeGuide = 'alexander';
+  Position? _currentPosition;
 
   @override
   void initState() {
     super.initState();
-    _setupInitialPoi();
-    _startLocationTracking();
+    _isMapView = widget.startInMapView;
+    _initAudioListeners();
+    _startExcursion();
+  }
+
+  void _initAudioListeners() {
+    _audioPlayer.onPlayerStateChanged.listen((state) {
+      if (mounted) {
+        setState(() => _isPlaying = state == PlayerState.playing);
+      }
+    });
+  }
+
+  Future<void> _startExcursion() async {
+    setState(() => _isLoading = true);
+    
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      Position position;
+      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+        position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      } else {
+        position = Position(
+          latitude: 59.2205,
+          longitude: 39.8915,
+          timestamp: DateTime.now(),
+          accuracy: 0,
+          altitude: 0,
+          heading: 0,
+          speed: 0,
+          speedAccuracy: 0,
+          altitudeAccuracy: 0,
+          headingAccuracy: 0,
+        );
+      }
+
+      setState(() => _currentPosition = position);
+
+      final result = await ApiService.askGuide(
+        lat: position.latitude,
+        lng: position.longitude,
+        guideId: _activeGuide,
+        poiId: widget.poi?['id']?.toString(),
+        question: widget.poi != null 
+            ? 'Расскажи историю про ${widget.poi!['title'] ?? 'это место'}'
+            : 'Начни аудиоэкскурсию по текущему маршруту.',
+      );
+
+      setState(() {
+        _currentStory = result['text'] ?? 'История недоступна.';
+      });
+
+      final rawAudio = result['audio_url'] ?? result['audio'];
+      final formattedAudio = ApiService.formatAudioUrl(rawAudio?.toString());
+      if (formattedAudio != null) {
+        await _audioPlayer.play(UrlSource(formattedAudio));
+      }
+    } catch (e) {
+      setState(() {
+        _currentStory = 'Ошибка при попытке начать экскурсию: $e';
+      });
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
   void dispose() {
-    _positionSubscription?.cancel();
     _audioPlayer.dispose();
     super.dispose();
   }
 
-  void _setupInitialPoi() {
-    if (widget.poi != null) {
-      final lat = widget.poi!['lat'] ?? widget.poi!['latitude'];
-      final lon = widget.poi!['lon'] ?? widget.poi!['longitude'];
-      if (lat != null && lon != null) {
-        _poiLocation = LatLng((lat as num).toDouble(), (lon as num).toDouble());
-        _guideResponseText = widget.poi!['description'] ?? widget.poi!['title'] ?? _guideResponseText;
-      }
-    }
-  }
-
-  Future<void> _startLocationTracking() async {
-    try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) return;
-      }
-
-      // Первичное получение координат
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-
-      if (mounted) {
-        setState(() {
-          _currentLocation = LatLng(position.latitude, position.longitude);
-        });
-        _mapController.move(_poiLocation ?? _currentLocation, 16.0);
-      }
-
-      // Отслеживание перемещений в реальном времени (каждые 5 метров)
-      _positionSubscription = Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          distanceFilter: 5,
-        ),
-      ).listen((Position pos) {
-        if (mounted) {
-          setState(() {
-            _currentLocation = LatLng(pos.latitude, pos.longitude);
-          });
-        }
-      });
-    } catch (e) {
-      debugPrint("Ошибка геолокации: $e");
-    }
-  }
-
-  Future<void> _requestAiStory() async {
-    setState(() {
-      _isLoading = true;
-      _guideResponseText = "Гид Yandex AI формирует рассказ...";
-    });
-
-    try {
-      final response = await ApiService.generateGuideStory(
-        lat: _currentLocation.latitude,
-        lng: _currentLocation.longitude,
-        guideId: _selectedGuide,
-      );
-
-      final text = response['text'] ?? response['answer'] ?? response['description'] ?? "Рассказ готов.";
-      final rawAudioUrl = response['audio_url'] ?? response['audio'] ?? response['voice_url'];
-      final formattedAudioUrl = ApiService.formatAudioUrl(rawAudioUrl?.toString());
-
-      setState(() {
-        _guideResponseText = text;
-      });
-
-      if (formattedAudioUrl != null && formattedAudioUrl.isNotEmpty) {
-        await _audioPlayer.stop();
-        await _audioPlayer.play(UrlSource(formattedAudioUrl));
-      }
-    } catch (e) {
-      setState(() {
-        _guideResponseText = "Ошибка загрузки: $e";
-      });
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
-
-    List<Marker> markers = [
-      Marker(
-        point: _currentLocation,
-        width: 40,
-        height: 40,
-        child: const Icon(
-          Icons.my_location,
-          color: Colors.blue,
-          size: 32,
-        ),
-      ),
-    ];
-
-    if (_poiLocation != null) {
-      markers.add(
-        Marker(
-          point: _poiLocation!,
-          width: 40,
-          height: 40,
-          child: const Icon(
-            Icons.location_on,
-            color: Colors.red,
-            size: 40,
-          ),
-        ),
-      );
-    }
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Экскурсия GID'),
+        title: Text(widget.poi?['title'] ?? 'Интерактивная экскурсия'),
         actions: [
-          DropdownButton<String>(
-            value: _selectedGuide,
-            underline: const SizedBox(),
-            items: const [
-              DropdownMenuItem(value: 'alexander', child: Text('Александр')),
-              DropdownMenuItem(value: 'anna', child: Text('Анна')),
-              DropdownMenuItem(value: 'mikhail', child: Text('Михаил')),
-            ],
-            onChanged: (val) {
-              if (val != null) setState(() => _selectedGuide = val);
-            },
-          ),
-          const SizedBox(width: 12),
+          IconButton(
+            icon: Icon(_isMapView ? Icons.list : Icons.map),
+            tooltip: _isMapView ? 'Список' : 'Карта',
+            onPressed: () => setState(() => _isMapView = !_isMapView),
+          )
         ],
       ),
-      body: Stack(
-        children: [
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: _poiLocation ?? _currentLocation,
-              initialZoom: 15.0,
-            ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
-                subdomains: const ['a', 'b', 'c', 'd'],
-                userAgentPackageName: 'com.example.gid_app',
+      body: _isLoading
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Гид подбирает интересные факты...'),
+                ],
               ),
-              MarkerLayer(markers: markers),
-            ],
-          ),
-          Positioned(
-            bottom: 20.0 + bottomPadding,
-            left: 16.0,
-            right: 16.0,
+            )
+          : _isMapView
+              ? _buildMapView()
+              : _buildStoryView(),
+    );
+  }
+
+  Widget _buildStoryView() {
+    return Padding(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        children: [
+          Expanded(
             child: Card(
-              elevation: 8,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              elevation: 2,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _guideResponseText,
-                      maxLines: 4,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 14, height: 1.3),
-                    ),
-                    const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      onPressed: _isLoading ? null : _requestAiStory,
-                      icon: _isLoading
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.record_voice_over),
-                      label: Text(_isLoading ? "Думает..." : "Спросить гида (Yandex AI)"),
-                      style: ElevatedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                padding: const EdgeInsets.all(20.0),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            backgroundColor: Theme.of(context).primaryColor,
+                            child: const Icon(Icons.record_voice_over, color: Colors.white),
+                          ),
+                          const SizedBox(width: 12),
+                          const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Рассказывает Гид', style: TextStyle(fontWeight: FontWeight.bold)),
+                              Text('Режим прогулки', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                            ],
+                          )
+                        ],
                       ),
-                    ),
-                  ],
+                      const Divider(height: 24),
+                      Text(
+                        _currentStory,
+                        style: const TextStyle(fontSize: 16, height: 1.5),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
+          const SizedBox(height: 16),
+          _buildAudioControls(),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMapView() {
+    return Stack(
+      children: [
+        Container(
+          color: Colors.blueGrey.shade100,
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.map_outlined, size: 80, color: Colors.blueGrey),
+                const SizedBox(height: 12),
+                Text(
+                  _currentPosition != null
+                      ? 'Координаты: ${_currentPosition!.latitude.toStringAsFixed(4)}, ${_currentPosition!.longitude.toStringAsFixed(4)}'
+                      : 'Интеграция с картой',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Positioned(
+          left: 16,
+          right: 16,
+          bottom: 20,
+          child: _buildAudioControls(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAudioControls() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            IconButton(
+              icon: Icon(_isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill),
+              iconSize: 48,
+              color: const Color(0xFF6C5CE7),
+              onPressed: () async {
+                if (_isPlaying) {
+                  await _audioPlayer.pause();
+                } else {
+                  await _audioPlayer.resume();
+                }
+              },
+            ),
+            Expanded(
+              child: Text(
+                _isPlaying ? 'Аудиогид вещает...' : 'Воспроизведение на паузе',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Запросить заново',
+              onPressed: _startExcursion,
+            ),
+          ],
+        ),
       ),
     );
   }
