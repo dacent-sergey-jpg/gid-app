@@ -30,6 +30,9 @@ jobs:
       - name: Generate Android project, Update SDK 34 & Add Permissions
         run: |
           flutter create --platforms=android .
+          
+          # Удаляем автосгенерированный шаблонный тест, чтобы он не ломал analyzer
+          rm -rf test
 
           GRADLE_FILE=$(find android/app -name "build.gradle*" | head -n 1)
 
