@@ -45,21 +45,26 @@ jobs:
             sed -i 's/compileSdk .*/compileSdk 36/' android/app/build.gradle
           fi
 
-          # 2. Переопределяем SDK для всех зависимых плагинов в корневом файле
+          # 2. Переопределяем SDK для плагинов с проверкой состояния executed
           if [ -f "android/build.gradle.kts" ]; then
             cat << 'EOF' >> android/build.gradle.kts
 
           subprojects {
-              afterEvaluate {
+              val updateSdk = {
                   val android = extensions.findByName("android")
                   if (android != null) {
                       try {
                           val method = android.javaClass.getMethod("setCompileSdkVersion", Int::class.javaPrimitiveType)
                           method.invoke(android, 36)
                       } catch (e: Exception) {
-                          // Игнорируем, если проект не является Android-модулем
+                          // Игнорируем
                       }
                   }
+              }
+              if (state.executed) {
+                  updateSdk()
+              } else {
+                  afterEvaluate { updateSdk() }
               }
           }
           EOF
@@ -67,11 +72,18 @@ jobs:
             cat << 'EOF' >> android/build.gradle
 
           subprojects {
-              afterEvaluate { project ->
+              def updateSdk = {
                   if (project.hasProperty('android')) {
                       project.android {
                           compileSdkVersion 36
                       }
+                  }
+              }
+              if (project.state.executed) {
+                  updateSdk()
+              } else {
+                  project.afterEvaluate {
+                      updateSdk()
                   }
               }
           }
