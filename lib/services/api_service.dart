@@ -35,109 +35,101 @@ class ApiService {
     double? lng,
     String guideId = 'alexander',
     String? question,
-    String? poiId,
+    dynamic poiId,
   }) async {
     final url = Uri.parse('$baseUrl/api/v1/ask-guide');
 
     final double safeLat = lat ?? 59.2205; // Default coordinates (Vologda)
     final double safeLng = lng ?? 39.8915;
-    final String promptText = (question != null && question.isNotEmpty)
-        ? question
+    final String promptText = (question != null && question.trim().isNotEmpty)
+        ? question.trim()
         : 'Расскажи подробнее об этом месте.';
 
-    // Clean primary payload matching exact FastAPI Pydantic schema required by backend
-    final Map<String, dynamic> primaryBody = {
-      'guide_id': guideId,
+    // Safe integer parsing for FastAPI POI ID
+    int parsedPoiId = 0;
+    if (poiId is int) {
+      parsedPoiId = poiId;
+    } else if (poiId is String) {
+      parsedPoiId = int.tryParse(poiId) ?? 0;
+    }
+
+    // Clean payload matching FastAPI AskGuideRequest Pydantic schema
+    final Map<String, dynamic> body = {
+      'poi_id': parsedPoiId,
       'user_question': promptText,
-      'question': promptText,
-      'poi_id': (poiId != null && poiId.isNotEmpty) ? poiId : '0',
+      'voice_id': guideId,
+      'guide_id': guideId,
       'latitude': safeLat,
       'longitude': safeLng,
-      'lat': safeLat,
-      'lng': safeLng,
     };
 
     try {
-      debugPrint('Sending ask-guide request to: $url with body: ${jsonEncode(primaryBody)}');
-      var response = await http
+      debugPrint('Sending ask-guide request to: $url with body: ${jsonEncode(body)}');
+      final response = await http
           .post(
             url,
             headers: {
               'Content-Type': 'application/json; charset=utf-8',
               'Accept': 'application/json',
             },
-            body: jsonEncode(primaryBody),
+            body: jsonEncode(body),
           )
           .timeout(const Duration(seconds: 45));
 
-      if (response.statusCode == 422) {
-        debugPrint('Primary request failed with 422. Retrying with numeric poi_id fallback...');
-        final Map<String, dynamic> fallbackBody = {
-          'guide_id': guideId,
-          'user_question': promptText,
-          'question': promptText,
-          'poi_id': int.tryParse(poiId ?? '0') ?? 0,
-          'latitude': safeLat,
-          'longitude': safeLng,
-          'lat': safeLat,
-          'lng': safeLng,
-        };
-        response = await http
-            .post(
-              url,
-              headers: {
-                'Content-Type': 'application/json; charset=utf-8',
-                'Accept': 'application/json',
-              },
-              body: jsonEncode(fallbackBody),
-            )
-            .timeout(const Duration(seconds: 30));
-      }
-
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
-        if (data is Map<String, dynamic>) return data;
-      } else {
-        String detailedError = 'Ошибка сервера (${response.statusCode})';
-        try {
-          final errBody = utf8.decode(response.bodyBytes);
-          debugPrint('FastAPI Error response: $errBody');
-          final errJson = jsonDecode(errBody);
-          if (errJson is Map && errJson.containsKey('detail')) {
-            final detail = errJson['detail'];
-            if (detail is List) {
-              final missingFields = detail.map((e) {
-                if (e is Map && e.containsKey('loc')) {
-                  final locList = (e['loc'] as List).where((p) => p != 'body').join('.');
-                  final msg = e['msg'] ?? '';
-                  return '$locList: $msg';
-                }
-                return e.toString();
-              }).join(', ');
-              detailedError = 'Ошибка схемы Pydantic (422): [$missingFields]';
-            } else {
-              detailedError = 'Ошибка (422): ${detail.toString()}';
-            }
-          }
-        } catch (_) {}
-
-        return {
-          'text': detailedError,
-          'audio_url': null,
-        };
+        if (data is Map<String, dynamic>) {
+          final rawAudio = data['audio_url'] as String?;
+          final answerText = data['answer'] ?? data['text'] ?? 'Ответ получен.';
+          
+          return {
+            'status': data['status'] ?? 'success',
+            'answer': answerText,
+            'text': answerText,
+            'audio_url': formatAudioUrl(rawAudio),
+          };
+        }
       }
+
+      // Handle FastAPI errors (422 / 404 / 500)
+      String detailedError = 'Ошибка сервера (${response.statusCode})';
+      try {
+        final errBody = utf8.decode(response.bodyBytes);
+        debugPrint('FastAPI Error response: $errBody');
+        final errJson = jsonDecode(errBody);
+        if (errJson is Map && errJson.containsKey('detail')) {
+          final detail = errJson['detail'];
+          if (detail is List) {
+            final missingFields = detail.map((e) {
+              if (e is Map && e.containsKey('loc')) {
+                final locList = (e['loc'] as List).where((p) => p != 'body').join('.');
+                final msg = e['msg'] ?? '';
+                return '$locList: $msg';
+              }
+              return e.toString();
+            }).join(', ');
+            detailedError = 'Ошибка валидации (422): [$missingFields]';
+          } else {
+            detailedError = 'Ошибка: ${detail.toString()}';
+          }
+        }
+      } catch (_) {}
+
+      return {
+        'status': 'error',
+        'answer': detailedError,
+        'text': detailedError,
+        'audio_url': null,
+      };
     } catch (e) {
       debugPrint('Exception calling ask-guide: $e');
       return {
+        'status': 'error',
+        'answer': 'Ошибка соединения с сервером: $e',
         'text': 'Ошибка соединения с сервером: $e',
         'audio_url': null,
       };
     }
-
-    return {
-      'text': 'Не удалось получить ответ от сервера.',
-      'audio_url': null,
-    };
   }
 
   /// Generate story based on user's current coordinates
@@ -191,7 +183,17 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
-        if (data is Map<String, dynamic>) return data;
+        if (data is Map<String, dynamic>) {
+          final rawAudio = data['audio_url'] as String?;
+          final desc = data['description'] ?? data['answer'] ?? 'Объект распознан.';
+          
+          return {
+            'status': 'success',
+            'description': desc,
+            'answer': desc,
+            'audio_url': formatAudioUrl(rawAudio),
+          };
+        }
       } else {
         debugPrint('Vision API Error ${response.statusCode}: ${response.body}');
       }
@@ -200,7 +202,9 @@ class ApiService {
     }
 
     return {
+      'status': 'error',
       'description': 'Не удалось распознать объект.',
+      'answer': 'Не удалось распознать объект.',
       'audio_url': null,
     };
   }
