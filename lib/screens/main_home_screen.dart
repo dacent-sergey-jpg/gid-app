@@ -4,7 +4,6 @@ import 'excursion_screen.dart';
 import 'camera_vision_screen.dart';
 import 'poi_detail_screen.dart';
 import '../models/poi_model.dart';
-import '../services/api_service.dart';
 
 class MainHomeScreen extends StatefulWidget {
   const MainHomeScreen({Key? key}) : super(key: key);
