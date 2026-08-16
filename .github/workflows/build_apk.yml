@@ -30,13 +30,12 @@ jobs:
       - name: Generate Android project, Update SDK 34 & Add Permissions
         run: |
           flutter create --platforms=android .
-          
-          # Fix compileSdkVersion & targetSdkVersion for dependencies requiring API 34
-          GRADLE_FILE="android/app/build.gradle"
-          sed -i 's/compileSdkVersion.*/compileSdkVersion 34/' $GRADLE_FILE
-          sed -i 's/targetSdkVersion.*/targetSdkVersion 34/' $GRADLE_FILE
-          
-          # Add permissions to AndroidManifest.xml
+
+          GRADLE_FILE=$(find android/app -name "build.gradle*" | head -n 1)
+
+          sed -i -E 's/(compileSdk|compileSdkVersion).*/compileSdk = 34/' "$GRADLE_FILE"
+          sed -i -E 's/(targetSdk|targetSdkVersion).*/targetSdk = 34/' "$GRADLE_FILE"
+
           MANIFEST="android/app/src/main/AndroidManifest.xml"
           sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>' $MANIFEST
           sed -i '/<application/i \    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>' $MANIFEST
