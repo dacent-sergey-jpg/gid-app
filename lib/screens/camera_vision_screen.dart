@@ -239,7 +239,10 @@ class _CameraVisionScreenState extends State<CameraVisionScreen>
                           IconButton.filled(
                             onPressed: _toggleAudioPlayback,
                             icon: const Icon(Icons.pause),
-                            backgroundColor: Colors.amber,
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.amber,
+                              foregroundColor: Colors.black,
+                            ),
                           ),
                         ],
                       ],
