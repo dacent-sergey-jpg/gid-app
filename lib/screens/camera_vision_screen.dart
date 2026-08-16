@@ -5,7 +5,7 @@ import 'package:audioplayers/audioplayers.dart';
 import '../services/api_service.dart';
 
 class CameraVisionScreen extends StatefulWidget {
-  const CameraVisionScreen({Key? key}) : super(key: key);
+  const CameraVisionScreen({super.key});
 
   @override
   State<CameraVisionScreen> createState() => _CameraVisionScreenState();
@@ -66,6 +66,8 @@ class _CameraVisionScreenState extends State<CameraVisionScreen> {
       final XFile imageFile = await _controller!.takePicture();
       final response = await ApiService.analyzeImage(File(imageFile.path));
 
+      if (!mounted) return;
+
       final text = response['description'] ?? response['text'] ?? response['answer'] ?? "Объект успешно распознан!";
       final rawAudioUrl = response['audio_url'] ?? response['audio'] ?? response['voice_url'];
       final formattedAudioUrl = ApiService.formatAudioUrl(rawAudioUrl?.toString());
@@ -79,13 +81,16 @@ class _CameraVisionScreenState extends State<CameraVisionScreen> {
         await _audioPlayer.play(UrlSource(formattedAudioUrl));
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _resultText = "Ошибка распознавания: $e";
       });
     } finally {
-      setState(() {
-        _isAnalyzing = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isAnalyzing = false;
+        });
+      }
     }
   }
 
@@ -111,7 +116,7 @@ class _CameraVisionScreenState extends State<CameraVisionScreen> {
             left: 16.0,
             right: 16.0,
             child: Card(
-              color: Colors.black.withOpacity(0.8),
+              color: Colors.black.withValues(alpha: 0.8),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
