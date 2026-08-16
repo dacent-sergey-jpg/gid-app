@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class PoiModel {
   final String id;
   final String title;
@@ -14,7 +16,7 @@ class PoiModel {
   double get latitude => lat;
   double get longitude => lng;
 
-  PoiModel({
+  const PoiModel({
     required this.id,
     required this.title,
     required this.description,
@@ -35,11 +37,22 @@ class PoiModel {
       imageUrl: json['image_url'] ?? json['image'],
       audioUrl: json['audio_url'] ?? json['audio'],
       category: json['category'],
-      lat: (json['lat'] ?? json['latitude'] ?? 59.2205).toDouble(),
-      lng: (json['lng'] ?? json['longitude'] ?? 39.8915).toDouble(),
-      facts: json['facts'] != null ? List<String>.from(json['facts']) : [],
-      distance: json['distance'] != null ? (json['distance'] as num).toDouble() : null,
+      lat: _parseCoordinate(json['lat'] ?? json['latitude'], fallback: 59.2205),
+      lng: _parseCoordinate(json['lng'] ?? json['longitude'], fallback: 39.8915),
+      facts: json['facts'] is List
+          ? List<String>.from((json['facts'] as List).map((e) => e.toString()))
+          : const [],
+      distance: json['distance'] != null
+          ? (num.tryParse(json['distance'].toString())?.toDouble())
+          : null,
     );
+  }
+
+  static double _parseCoordinate(dynamic value, {required double fallback}) {
+    if (value == null) return fallback;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? fallback;
+    return fallback;
   }
 
   Map<String, dynamic> toJson() {
@@ -56,4 +69,47 @@ class PoiModel {
       if (distance != null) 'distance': distance,
     };
   }
+
+  // Сериализация в String для сохранения в SharedPreferences
+  String toJsonString() => jsonEncode(toJson());
+
+  factory PoiModel.fromJsonString(String source) =>
+      PoiModel.fromJson(jsonDecode(source) as Map<String, dynamic>);
+
+  // Копирование объекта с изменением отдельных полей
+  PoiModel copyWith({
+    String? id,
+    String? title,
+    String? description,
+    String? imageUrl,
+    String? audioUrl,
+    String? category,
+    double? lat,
+    double? lng,
+    List<String>? facts,
+    double? distance,
+  }) {
+    return PoiModel(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      imageUrl: imageUrl ?? this.imageUrl,
+      audioUrl: audioUrl ?? this.audioUrl,
+      category: category ?? this.category,
+      lat: lat ?? this.lat,
+      lng: lng ?? this.lng,
+      facts: facts ?? this.facts,
+      distance: distance ?? this.distance,
+    );
+  }
+
+  // Сравнение объектов по id для работы в Set / List (например, в Избранном)
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is PoiModel && other.id == id;
+  }
+
+  @override
+  int get hashCode => id.hashCode;
 }
