@@ -14,9 +14,9 @@ class GuideSelectionScreen extends StatefulWidget {
 }
 
 class _GuideSelectionScreenState extends State<GuideSelectionScreen> {
-  String _selectedVoice = 'anna';
+  late String _selectedVoice;
 
-  final List<Map<String, String>> _guides = [
+  final List<Map<String, String>> _guides = const [
     {
       'id': 'anna',
       'name': 'Анна',
@@ -36,6 +36,13 @@ class _GuideSelectionScreenState extends State<GuideSelectionScreen> {
       'desc': 'Глубокий бархатный голос. Любит забавные байки и исторические анекдоты.',
     },
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Инициализация из уже сохраненных настроек
+    _selectedVoice = PreferencesService.getSelectedVoice();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -62,67 +69,98 @@ class _GuideSelectionScreenState extends State<GuideSelectionScreen> {
                     final guide = _guides[index];
                     final isSelected = _selectedVoice == guide['id'];
 
-                    return GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _selectedVoice = guide['id']!;
-                        });
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 16),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Material(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        elevation: isSelected ? 2 : 0,
+                        shadowColor: Colors.deepPurple.withOpacity(0.2),
+                        child: InkWell(
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: isSelected ? Colors.deepPurple : Colors.black12,
-                            width: isSelected ? 2 : 1,
-                          ),
-                          boxShadow: [
-                            if (isSelected)
-                              BoxShadow(
-                                color: Colors.deepPurple.withValues(alpha: 0.12),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
-                              )
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 28,
-                              backgroundColor: isSelected ? Colors.deepPurple : Colors.grey[200],
-                              child: Text(
-                                guide['name']![0],
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                  color: isSelected ? Colors.white : Colors.black87,
+                          onTap: () {
+                            setState(() {
+                              _selectedVoice = guide['id']!;
+                            });
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: isSelected
+                                    ? Colors.deepPurple
+                                    : Colors.black12,
+                                width: isSelected ? 2 : 1,
+                              ),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                CircleAvatar(
+                                  radius: 28,
+                                  backgroundColor: isSelected
+                                      ? Colors.deepPurple
+                                      : Colors.grey[200],
+                                  child: Text(
+                                    guide['name']![0],
+                                    style: TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.bold,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : Colors.black87,
+                                    ),
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            guide['name']!,
+                                            style: const TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          if (isSelected)
+                                            const Icon(
+                                              Icons.check_circle,
+                                              color: Colors.deepPurple,
+                                              size: 22,
+                                            ),
+                                        ],
+                                      ),
+                                      Text(
+                                        guide['role']!,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.grey[600],
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        guide['desc']!,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey[800],
+                                          height: 1.3,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    guide['name']!,
-                                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                                  ),
-                                  Text(
-                                    guide['role']!,
-                                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    guide['desc']!,
-                                    style: TextStyle(fontSize: 12, color: Colors.grey[800]),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     );
@@ -135,7 +173,10 @@ class _GuideSelectionScreenState extends State<GuideSelectionScreen> {
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.deepPurple,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
                   onPressed: () async {
                     await PreferencesService.setSelectedVoice(_selectedVoice);
@@ -145,7 +186,11 @@ class _GuideSelectionScreenState extends State<GuideSelectionScreen> {
                   },
                   child: const Text(
                     'Начать прогулку',
-                    style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
