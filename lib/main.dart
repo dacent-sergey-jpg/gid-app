@@ -9,7 +9,7 @@ void main() {
 }
 
 class GidApp extends StatelessWidget {
-  const GidApp({Key? key}) : super(key: key);
+  const GidApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +31,7 @@ class GidApp extends StatelessWidget {
 }
 
 class MainWrapper extends StatefulWidget {
-  const MainWrapper({Key? key}) : super(key: key);
+  const MainWrapper({super.key});
 
   @override
   State<MainWrapper> createState() => _MainWrapperState();
