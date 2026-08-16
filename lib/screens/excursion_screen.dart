@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:geolocator/geolocator.dart';
 import '../services/api_service.dart';
+import '../services/preferences_service.dart';
 
 class ExcursionScreen extends StatefulWidget {
   final Map<String, dynamic>? poi;
@@ -25,13 +26,17 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
   bool _isPlaying = false;
 
   String _currentStory = 'Определение геопозиции и загрузка экскурсии...';
-  final String _activeGuide = 'alexander';
+  String _activeGuide = PreferencesService.defaultVoice;
   Position? _currentPosition;
+
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
 
   @override
   void initState() {
     super.initState();
     _isMapView = widget.startInMapView;
+    _activeGuide = PreferencesService.getSelectedVoice();
     _initAudioListeners();
     _startExcursion();
   }
@@ -42,10 +47,28 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
         setState(() => _isPlaying = state == PlayerState.playing);
       }
     });
+
+    _audioPlayer.onDurationChanged.listen((newDuration) {
+      if (mounted) {
+        setState(() => _duration = newDuration);
+      }
+    });
+
+    _audioPlayer.onPositionChanged.listen((newPosition) {
+      if (mounted) {
+        setState(() => _position = newPosition);
+      }
+    });
   }
 
   Future<void> _startExcursion() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _position = Duration.zero;
+      _duration = Duration.zero;
+    });
+
+    await _audioPlayer.stop();
 
     try {
       LocationPermission permission = await Geolocator.checkPermission();
@@ -58,6 +81,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
           permission == LocationPermission.always) {
         position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 10),
         );
       } else {
         position = Position(
@@ -88,13 +112,14 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
       );
 
       if (!mounted) return;
+
+      final text = result['answer'] ?? result['text'] ?? 'История недоступна.';
       setState(() {
-        _currentStory = result['text'] ?? 'История недоступна.';
+        _currentStory = text;
       });
 
-      final rawAudio = result['audio_url'] ?? result['audio'];
-      final formattedAudio = ApiService.formatAudioUrl(rawAudio?.toString());
-      if (formattedAudio != null) {
+      final formattedAudio = result['audio_url']?.toString();
+      if (formattedAudio != null && formattedAudio.isNotEmpty) {
         await _audioPlayer.play(UrlSource(formattedAudio));
       }
     } catch (e) {
@@ -111,8 +136,16 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
 
   @override
   void dispose() {
+    _audioPlayer.stop();
     _audioPlayer.dispose();
     super.dispose();
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
   }
 
   @override
@@ -147,7 +180,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
 
   Widget _buildStoryView() {
     return Padding(
-      padding: const EdgeInsets.all(20.0),
+      padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
           Expanded(
@@ -172,14 +205,14 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
                             ),
                           ),
                           const SizedBox(width: 12),
-                          const Column(
+                          Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Рассказывает Гид',
-                                style: TextStyle(fontWeight: FontWeight.bold),
+                                'Гид: ${_activeGuide.toUpperCase()}',
+                                style: const TextStyle(fontWeight: FontWeight.bold),
                               ),
-                              Text(
+                              const Text(
                                 'Режим прогулки',
                                 style: TextStyle(
                                   fontSize: 12,
@@ -201,7 +234,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           _buildAudioControls(),
         ],
       ),
@@ -236,7 +269,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
         Positioned(
           left: 16,
           right: 16,
-          bottom: 20,
+          bottom: 16,
           child: _buildAudioControls(),
         ),
       ],
@@ -248,37 +281,72 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            IconButton(
-              icon: Icon(
-                _isPlaying
-                    ? Icons.pause_circle_filled
-                    : Icons.play_circle_fill,
+            if (_duration > Duration.zero) ...[
+              Slider(
+                min: 0.0,
+                max: _duration.inSeconds.toDouble(),
+                value: _position.inSeconds.toDouble().clamp(
+                      0.0,
+                      _duration.inSeconds.toDouble(),
+                    ),
+                onChanged: (value) async {
+                  final position = Duration(seconds: value.toInt());
+                  await _audioPlayer.seek(position);
+                },
               ),
-              iconSize: 48,
-              color: const Color(0xFF6C5CE7),
-              onPressed: () async {
-                if (_isPlaying) {
-                  await _audioPlayer.pause();
-                } else {
-                  await _audioPlayer.resume();
-                }
-              },
-            ),
-            Expanded(
-              child: Text(
-                _isPlaying ? 'Аудиогид вещает...' : 'Воспроизведение на паузе',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.bold),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _formatDuration(_position),
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    Text(
+                      _formatDuration(_duration),
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Запросить заново',
-              onPressed: _startExcursion,
+            ],
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  icon: Icon(
+                    _isPlaying
+                        ? Icons.pause_circle_filled
+                        : Icons.play_circle_fill,
+                  ),
+                  iconSize: 48,
+                  color: Theme.of(context).primaryColor,
+                  onPressed: () async {
+                    if (_isPlaying) {
+                      await _audioPlayer.pause();
+                    } else {
+                      await _audioPlayer.resume();
+                    }
+                  },
+                ),
+                Expanded(
+                  child: Text(
+                    _isPlaying ? 'Аудиогид вещает...' : 'Воспроизведение на паузе',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Запросить заново',
+                  onPressed: _startExcursion,
+                ),
+              ],
             ),
           ],
         ),
