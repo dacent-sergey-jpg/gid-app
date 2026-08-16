@@ -6,14 +6,14 @@ import 'poi_detail_screen.dart';
 import '../models/poi_model.dart';
 
 class MainHomeScreen extends StatefulWidget {
-  const MainHomeScreen({Key? key}) : super(key: key);
+  const MainHomeScreen({super.key});
 
   @override
   State<MainHomeScreen> createState() => _MainHomeScreenState();
 }
 
 class _MainHomeScreenState extends State<MainHomeScreen> {
-  List<PoiModel> _favorites = [];
+  final List<PoiModel> _favorites = [];
 
   void _openFavorites() {
     showModalBottomSheet(
@@ -145,7 +145,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     borderRadius: BorderRadius.circular(28),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF6C5CE7).withOpacity(0.35),
+                        color: const Color(0xFF6C5CE7).withValues(alpha: 0.35),
                         blurRadius: 20,
                         offset: const Offset(0, 10),
                       )
@@ -169,7 +169,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                             Container(
                               padding: const EdgeInsets.all(20),
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
+                                color: Colors.white.withValues(alpha: 0.2),
                                 shape: BoxShape.circle,
                               ),
                               child: const Icon(
@@ -275,7 +275,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           border: Border.all(color: Colors.grey.shade200),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.03),
+              color: Colors.black.withValues(alpha: 0.03),
               blurRadius: 10,
               offset: const Offset(0, 4),
             )
