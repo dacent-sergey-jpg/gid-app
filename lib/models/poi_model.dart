@@ -8,6 +8,11 @@ class PoiModel {
   final double lat;
   final double lng;
   final List<String> facts;
+  final double? distance;
+
+  // Геттеры для совместимости с внешними вызовами
+  double get latitude => lat;
+  double get longitude => lng;
 
   PoiModel({
     required this.id,
@@ -19,6 +24,7 @@ class PoiModel {
     required this.lat,
     required this.lng,
     this.facts = const [],
+    this.distance,
   });
 
   factory PoiModel.fromJson(Map<String, dynamic> json) {
@@ -32,6 +38,7 @@ class PoiModel {
       lat: (json['lat'] ?? json['latitude'] ?? 59.2205).toDouble(),
       lng: (json['lng'] ?? json['longitude'] ?? 39.8915).toDouble(),
       facts: json['facts'] != null ? List<String>.from(json['facts']) : [],
+      distance: json['distance'] != null ? (json['distance'] as num).toDouble() : null,
     );
   }
 
@@ -46,6 +53,7 @@ class PoiModel {
       'lat': lat,
       'lng': lng,
       'facts': facts,
+      if (distance != null) 'distance': distance,
     };
   }
 }
