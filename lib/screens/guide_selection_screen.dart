@@ -4,7 +4,10 @@ import '../services/preferences_service.dart';
 class GuideSelectionScreen extends StatefulWidget {
   final VoidCallback onGuideSelected;
 
-  const GuideSelectionScreen({Key? key, required this.onGuideSelected}) : super(key: key);
+  const GuideSelectionScreen({
+    super.key,
+    required this.onGuideSelected,
+  });
 
   @override
   State<GuideSelectionScreen> createState() => _GuideSelectionScreenState();
@@ -39,7 +42,10 @@ class _GuideSelectionScreenState extends State<GuideSelectionScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
-        title: const Text('Выберите вашего гида', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Выберите вашего гида',
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
@@ -75,7 +81,7 @@ class _GuideSelectionScreenState extends State<GuideSelectionScreen> {
                           boxShadow: [
                             if (isSelected)
                               BoxShadow(
-                                color: Colors.deepPurple.withOpacity(0.12),
+                                color: Colors.deepPurple.withValues(alpha: 0.12),
                                 blurRadius: 10,
                                 offset: const Offset(0, 4),
                               )
@@ -134,6 +140,7 @@ class _GuideSelectionScreenState extends State<GuideSelectionScreen> {
                   onPressed: () async {
                     await PreferencesService.setSelectedVoice(_selectedVoice);
                     await PreferencesService.setOnboardingCompleted(true);
+                    if (!mounted) return;
                     widget.onGuideSelected();
                   },
                   child: const Text(
