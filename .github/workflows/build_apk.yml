@@ -44,7 +44,7 @@ jobs:
               <uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\"/>
               <uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\"/>
           '''
-          content = content.replace('<manifest', '<manifest\n' + permissions)
+          content = content.replace('<application', permissions + '\n    <application')
           with open(path, 'w') as f:
               f.write(content)
           "
