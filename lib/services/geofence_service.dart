@@ -2,36 +2,41 @@ import 'package:geolocator/geolocator.dart';
 import '../models/poi_model.dart';
 
 class GeofenceService {
-  final Set<int> _triggeredPoiIds = {};
-  final double triggerRadiusMeters;
+  static const double geofenceRadiusMeters = 50.0;
 
-  GeofenceService({this.triggerRadiusMeters = 30.0});
+  /// Проверяет, находится ли пользователь в геозоне объекта
+  bool isUserInGeofence(Position userPosition, PoiModel poi) {
+    double distanceInMeters = Geolocator.distanceBetween(
+      userPosition.latitude,
+      userPosition.longitude,
+      poi.latitude,
+      poi.longitude, // Использовано longitude вместо lon
+    );
 
-  /// Проверяет расстояние до ближайших мест и возвращает объект в радиусе срабатывания
-  PoiModel? checkProximity({
-    required double userLat,
-    required double userLon,
-    required List<PoiModel> poiList,
-  }) {
-    for (final poi in poiList) {
-      if (_triggeredPoiIds.contains(poi.id)) continue;
-
-      final distance = Geolocator.distanceBetween(
-        userLat,
-        userLon,
-        poi.lat,
-        poi.lon,
-      );
-
-      if (distance <= triggerRadiusMeters) {
-        _triggeredPoiIds.add(poi.id);
-        return poi;
-      }
-    }
-    return null;
+    return distanceInMeters <= geofenceRadiusMeters;
   }
 
-  void resetTriggers() {
-    _triggeredPoiIds.clear();
+  /// Находит ближайшую к пользователю точку из списка
+  PoiModel? findNearestPoi(Position userPosition, List<PoiModel> pois) {
+    if (pois.isEmpty) return null;
+
+    PoiModel? nearestPoi;
+    double minDistance = double.infinity;
+
+    for (var poi in pois) {
+      double distance = Geolocator.distanceBetween(
+        userPosition.latitude,
+        userPosition.longitude,
+        poi.latitude,
+        poi.longitude,
+      );
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestPoi = poi;
+      }
+    }
+
+    return nearestPoi;
   }
 }
