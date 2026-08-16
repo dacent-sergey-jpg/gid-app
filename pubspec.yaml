@@ -1,7 +1,6 @@
 name: gid_app
-description: "Мобильное приложение-аудиогид GID с ИИ и GPS-навигацией"
+description: "AI Audio Guide Mobile Application for Vologda"
 publish_to: 'none'
-
 version: 1.0.0+1
 
 environment:
@@ -11,14 +10,11 @@ dependencies:
   flutter:
     sdk: flutter
 
-  cupertino_icons: ^1.0.8
   http: ^1.2.0
-  shared_preferences: ^2.2.2
-  geolocator: ^11.0.0
-  audioplayers: ^6.0.0
-  flutter_map: ^6.1.0
-  latlong2: ^0.9.0
-  camera: ^0.10.5+9
+  audioplayers: ^5.2.1
+  geolocator: ^10.1.0
+  image_picker: ^1.0.7
+  cupertino_icons: ^1.0.6
 
 dev_dependencies:
   flutter_test:
@@ -27,6 +23,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
   assets:
-    - assets/
+    - assets/images/
