@@ -45,28 +45,16 @@ def health_check():
 
 
 @app.get("/api/v1/nearby", response_model=List[PoiNearbyResponse])
+@app.get("/api/v1/nearby/", response_model=List[PoiNearbyResponse], include_in_schema=False)
 def get_nearby_pois(
     lat: float = Query(..., ge=-90, le=90, description="Широта"),
     lon: float = Query(..., ge=-180, le=180, description="Долгота"),
     radius_meters: float = Query(5000.0, gt=0, description="Радиус поиска в метрах"),
     db: Session = Depends(get_db)
 ):
-    """
-    Get all POI within specified radius using PostGIS spatial queries.
-    Returns results sorted by distance.
-    
-    Параметры ТЗ раздел 6:
-    - latitude: широта пользователя
-    - longitude: долгота пользователя
-    - radius_meters: радиус поиска (по умолчанию 500м -> 5км в MVP)
-    """
-    
     try:
-        # Create point from user coordinates (WGS84)
         user_point = WKTElement(f'POINT({lon} {lat})', srid=4326)
         
-        # Query using PostGIS ST_DWithin function
-        # ST_DWithin returns geometries within distance in meters
         pois = db.query(
             POI.id,
             POI.title,
@@ -78,17 +66,14 @@ def get_nearby_pois(
             POI.priority,
             func.ST_X(POI.location).label('longitude'),
             func.ST_Y(POI.location).label('latitude'),
-            # Calculate distance in meters
             func.ST_Distance_Sphere(POI.location, user_point).label('distance_meters')
         ).filter(
             POI.is_active == True,
-            # Use ST_DWithin for efficient spatial index search
             ST_DWithin(POI.location, user_point, radius_meters)
         ).order_by(
             'distance_meters'
         ).all()
         
-        # Convert results to response format
         results = []
         for poi in pois:
             results.append(PoiNearbyResponse(
@@ -112,34 +97,19 @@ def get_nearby_pois(
 
 
 @app.post("/api/v1/ask-guide", response_model=AskGuideResponse)
+@app.post("/api/v1/ask-guide/", response_model=AskGuideResponse, include_in_schema=False)
 def ask_guide(
     request: AskGuideRequest,
     db: Session = Depends(get_db)
 ):
-    """
-    Answer user question about POI using RAG + LLM.
-    Параметры ТЗ раздел 11:
-    - poi_id: ID объекта
-    - user_question: вопрос пользователя
-    - voice_id: выбранный голос гида
-    """
-    
-    # Find POI in database
     poi = db.query(POI).filter(POI.id == request.poi_id).first()
     if not poi:
         raise HTTPException(status_code=404, detail="POI not found")
     
-    # Build RAG response from verified facts (Раздел 10 ТЗ)
     facts_text = " ".join(poi.facts) if poi.facts else "Информация отсутствует"
-    
-    # Generate answer using verified facts
-    # TODO: Integrate with Claude/Gemini LLM (ЭТАП 2)
     answer = f"По поводу '{poi.title}': {facts_text}. Ответ на ваш вопрос: {request.user_question}"
+    audio_url = poi.audio_url
     
-    # TODO: Generate audio using TTS (ЭТАП 3)
-    audio_url = poi.audio_url  # Temporary placeholder
-    
-    # Update visit statistics
     poi.times_visited += 1
     db.commit()
     
@@ -150,25 +120,27 @@ def ask_guide(
     )
 
 
+@app.post("/api/v1/analyze-image")
+@app.post("/api/v1/analyze-image/", include_in_schema=False)
+def analyze_image():
+    """Endpoint placeholder for computer vision / photo recognition"""
+    return {
+        "status": "success",
+        "message": "Анализ изображения пока в разработке",
+        "poi_id": None
+    }
+
+
 @app.get("/api/v1/best-poi")
+@app.get("/api/v1/best-poi/", include_in_schema=False)
 def get_best_poi(
     lat: float = Query(..., ge=-90, le=90, description="Широта"),
     lon: float = Query(..., ge=-180, le=180, description="Долгота"),
     radius_meters: float = Query(500.0, gt=0, description="Радиус поиска"),
     db: Session = Depends(get_db)
 ):
-    """
-    Get the best POI using scoring algorithm (Раздел 7 ТЗ).
-    Algorithm considers:
-    - интересность (priority)
-    - расстояние (distance)
-    - историческая ценность (built_year)
-    - уже рассказывали (times_visited)
-    """
-    
     user_point = WKTElement(f'POINT({lon} {lat})', srid=4326)
     
-    # Get all nearby POI
     pois = db.query(
         POI.id,
         POI.title,
@@ -183,21 +155,14 @@ def get_best_poi(
     if not pois:
         return {"status": "error", "message": "No POI found"}
     
-    # Score each POI (Раздел 7 ТЗ)
     best_poi = None
     best_score = -1
     
     for poi in pois:
-        # Distance score (closer = higher, max 10)
         distance_score = max(0, 10 - (poi.distance_meters / 100))
-        
-        # Priority score (already normalized 1-10)
         priority_score = poi.priority
-        
-        # Recency score (penalize already visited)
         recency_score = 10 / (1 + poi.times_visited)
         
-        # Combined score
         total_score = (distance_score * 0.3) + (priority_score * 0.5) + (recency_score * 0.2)
         
         if total_score > best_score:
@@ -217,8 +182,8 @@ def get_best_poi(
 
 
 @app.get("/api/v1/stats")
+@app.get("/api/v1/stats/", include_in_schema=False)
 def get_stats(db: Session = Depends(get_db)):
-    """Get database statistics"""
     total_pois = db.query(func.count(POI.id)).scalar()
     most_visited = db.query(POI).order_by(POI.times_visited.desc()).first()
     avg_rating = db.query(func.avg(POI.average_rating)).scalar()
