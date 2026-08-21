@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
 import '../services/api_service.dart';
 
 class ExcursionScreen extends StatefulWidget {
-  final double lat;
-  final double lng;
-  final String guideId;
+  final double? lat;
+  final double? lng;
+  final String? guideId;
+  final bool? startInMapView;
 
   const ExcursionScreen({
     Key? key,
-    required this.lat,
-    required this.lng,
-    this.guideId = 'VOLOGDA_GUIDE',
+    this.lat,
+    this.lng,
+    this.guideId,
+    this.startInMapView,
   }) : super(key: key);
 
   @override
@@ -24,24 +24,30 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
   String _statusMessage = 'Загрузка экскурсии...';
   String? _audioUrl;
 
+  late double _currentLat;
+  late double _currentLng;
+  late String _currentGuideId;
+
   @override
   void initState() {
     super.initState();
+    _currentLat = widget.lat ?? 59.2205;
+    _currentLng = widget.lng ?? 39.8915;
+    _currentGuideId = widget.guideId ?? 'VOLOGDA_GUIDE';
     _startExcursion();
   }
 
   Future<void> _startExcursion() async {
     setState(() {
       _isLoading = true;
-      _statusMessage = 'Подключение к гиду (сервер просыпается, подождите)...';
+      _statusMessage = 'Подключение к гиду...';
     });
 
     try {
-      // Убран жёсткий 10-секундный .timeout(), используется таймаут из ApiService (90 сек)
       final response = await ApiService.askGuide(
-        lat: widget.lat,
-        lng: widget.lng,
-        guideId: widget.guideId,
+        lat: _currentLat,
+        lng: _currentLng,
+        guideId: _currentGuideId,
         userQuestion: 'Начни экскурсию по текущим координатам',
       );
 
@@ -50,11 +56,6 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
         _statusMessage = response['text_response'] ?? response['answer'] ?? 'Экскурсия начата';
         _audioUrl = ApiService.formatAudioUrl(response['audio_url']);
       });
-
-      if (_audioUrl != null) {
-        // Здесь вызов вашего AudioPlayer
-        // await _audioPlayer.play(UrlSource(_audioUrl!));
-      }
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -65,46 +66,30 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currentLatLng = LatLng(widget.lat, widget.lng);
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Интерактивная экскурсия'),
       ),
       body: Column(
         children: [
-          // Виджет Карты
           Expanded(
-            child: FlutterMap(
-              options: MapOptions(
-                initialCenter: currentLatLng,
-                initialZoom: 15.0,
-              ),
-              children: [
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  // Обязательно укажите package name, иначе OSM блокирует тайлы (серый экран)
-                  userAgentPackageName: 'com.example.gid_app',
-                ),
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: currentLatLng,
-                      width: 40,
-                      height: 40,
-                      child: const Icon(
-                        Icons.location_on,
-                        color: Colors.red,
-                        size: 40,
-                      ),
+            child: Container(
+              color: Colors.blueGrey[50],
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.map, size: 64, color: Colors.blueGrey),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Координаты: ${_currentLat.toStringAsFixed(4)}, ${_currentLng.toStringAsFixed(4)}',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
-          
-          // Панель статуса / ответа гида
           Container(
             padding: const EdgeInsets.all(16.0),
             color: Colors.white,
@@ -118,7 +103,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
                     ),
                     const SizedBox(width: 12),
                     Text(
-                      'Гид: ${widget.guideId}',
+                      'Гид: $_currentGuideId',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ],
