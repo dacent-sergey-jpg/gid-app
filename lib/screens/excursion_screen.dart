@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../services/api_service.dart';
 
 class ExcursionScreen extends StatefulWidget {
@@ -31,6 +33,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
   @override
   void initState() {
     super.initState();
+    // Координаты Вологды по умолчанию, если параметры не переданы
     _currentLat = widget.lat ?? 59.2205;
     _currentLng = widget.lng ?? 39.8915;
     _currentGuideId = widget.guideId ?? 'VOLOGDA_GUIDE';
@@ -40,7 +43,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
   Future<void> _startExcursion() async {
     setState(() {
       _isLoading = true;
-      _statusMessage = 'Подключение к гиду...';
+      _statusMessage = 'Подключение к гиду (сервер просыпается)...';
     });
 
     try {
@@ -66,30 +69,45 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final currentLatLng = LatLng(_currentLat, _currentLng);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Интерактивная экскурсия'),
       ),
       body: Column(
         children: [
+          // Полноценная интерактивная карта OpenStreetMap
           Expanded(
-            child: Container(
-              color: Colors.blueGrey[50],
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.map, size: 64, color: Colors.blueGrey),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Координаты: ${_currentLat.toStringAsFixed(4)}, ${_currentLng.toStringAsFixed(4)}',
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+            child: FlutterMap(
+              options: MapOptions(
+                initialCenter: currentLatLng,
+                initialZoom: 15.0,
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.example.gid_app',
+                ),
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: currentLatLng,
+                      width: 40,
+                      height: 40,
+                      child: const Icon(
+                        Icons.location_on,
+                        color: Colors.red,
+                        size: 40,
+                      ),
                     ),
                   ],
                 ),
-              ),
+              ],
             ),
           ),
+          
+          // Панель состояния экскурсии
           Container(
             padding: const EdgeInsets.all(16.0),
             color: Colors.white,
