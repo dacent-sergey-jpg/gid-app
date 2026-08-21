@@ -1,4 +1,4 @@
-import 'dart0:convert';
+import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../models/poi_model.dart';
@@ -43,10 +43,12 @@ class ApiService {
     String? guideId,
     double? lat,
     double? lon,
+    double? lng,
   }) async {
     final uri = Uri.parse('$baseUrl/api/v1/ask-guide');
     final actualPoiId = poiId ?? '1';
     final actualQuestion = userQuestion ?? question ?? '';
+    final actualLon = lon ?? lng;
 
     final Map<String, dynamic> body = {
       'poi_id': actualPoiId,
@@ -55,7 +57,7 @@ class ApiService {
 
     if (guideId != null) body['guide_id'] = guideId;
     if (lat != null) body['lat'] = lat;
-    if (lon != null) body['lon'] = lon;
+    if (actualLon != null) body['lon'] = actualLon;
 
     try {
       final response = await http.post(
