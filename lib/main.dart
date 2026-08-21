@@ -1,74 +1,54 @@
 import 'package:flutter/material.dart';
-import 'screens/guide_selection_screen.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:camera/camera.dart';
 import 'screens/main_home_screen.dart';
-import 'services/preferences_service.dart';
 
-void main() {
+List<CameraDescription> cameras = [];
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const GidApp());
+  
+  // Инициализация камер и запрос разрешений при старте
+  try {
+    cameras = await availableCameras();
+  } catch (e) {
+    print('Ошибка инициализации камеры: $e');
+  }
+
+  runApp(const MyApp());
 }
 
-class GidApp extends StatelessWidget {
-  const GidApp({super.key});
+class MyApp extends StatefulWidget {
+  const MyApp({Key? key}) : super(key: key);
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  @override
+  void initState() {
+    super.initState();
+    _requestAllPermissions();
+  }
+
+  Future<void> _requestAllPermissions() async {
+    // 1. Запрос геопозиции
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      await Geolocator.requestPermission();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'GID',
-      debugShowCheckedModeBanner: false,
+      title: 'ГИД Вологда',
       theme: ThemeData(
+        primarySwatch: Colors.blue,
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFF9FAFB),
-        fontFamily: 'Roboto',
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF6C5CE7),
-          primary: const Color(0xFF6C5CE7),
-        ),
       ),
-      home: const MainWrapper(),
+      home: const MainHomeScreen(),
     );
-  }
-}
-
-class MainWrapper extends StatefulWidget {
-  const MainWrapper({super.key});
-
-  @override
-  State<MainWrapper> createState() => _MainWrapperState();
-}
-
-class _MainWrapperState extends State<MainWrapper> {
-  bool _isLoading = true;
-  bool _isOnboardingDone = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkOnboarding();
-  }
-
-  Future<void> _checkOnboarding() async {
-    final completed = await PreferencesService.isOnboardingCompleted();
-    setState(() {
-      _isOnboardingDone = completed;
-      _isLoading = false;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
-    if (!_isOnboardingDone) {
-      return GuideSelectionScreen(
-        onGuideSelected: () {
-          setState(() => _isOnboardingDone = true);
-        },
-      );
-    }
-
-    return const MainHomeScreen();
   }
 }
