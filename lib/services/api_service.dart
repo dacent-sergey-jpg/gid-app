@@ -1,211 +1,86 @@
 import 'dart:convert';
-import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../models/poi_model.dart';
 
 class ApiService {
-  // Base backend URL hosted on Render
   static const String baseUrl = 'https://gid-backend-oi81.onrender.com';
 
-  /// Converts relative audio paths (/static/...) to full absolute URLs
-  static String? formatAudioUrl(String? rawUrl) {
-    if (rawUrl == null || rawUrl.isEmpty) return null;
-    if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
-      return rawUrl;
-    }
-    final cleanPath = rawUrl.startsWith('/') ? rawUrl : '/$rawUrl';
-    return '$baseUrl$cleanPath';
-  }
-
-  /// Server health check (GET /health)
-  static Future<bool> pingServer() async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/health'))
-          .timeout(const Duration(seconds: 10));
-      return response.statusCode == 200;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /// Primary method to query AI guide with location & question payload
-  static Future<Map<String, dynamic>> askGuide({
-    double? lat,
-    double? lng,
-    String guideId = 'alexander',
-    String? question,
-    dynamic poiId,
-  }) async {
-    final url = Uri.parse('$baseUrl/api/v1/ask-guide');
-
-    final double safeLat = lat ?? 59.2205; // Default coordinates (Vologda)
-    final double safeLng = lng ?? 39.8915;
-    final String promptText = (question != null && question.trim().isNotEmpty)
-        ? question.trim()
-        : 'Расскажи подробнее об этом месте.';
-
-    // Safe integer parsing for FastAPI POI ID
-    int parsedPoiId = 0;
-    if (poiId is int) {
-      parsedPoiId = poiId;
-    } else if (poiId is String) {
-      parsedPoiId = int.tryParse(poiId) ?? 0;
-    }
-
-    // Clean payload matching FastAPI AskGuideRequest Pydantic schema
-    final Map<String, dynamic> body = {
-      'poi_id': parsedPoiId,
-      'user_question': promptText,
-      'voice_id': guideId,
-      'guide_id': guideId,
-      'latitude': safeLat,
-      'longitude': safeLng,
-    };
-
-    try {
-      debugPrint('Sending ask-guide request to: $url with body: ${jsonEncode(body)}');
-      final response = await http
-          .post(
-            url,
-            headers: {
-              'Content-Type': 'application/json; charset=utf-8',
-              'Accept': 'application/json',
-            },
-            body: jsonEncode(body),
-          )
-          .timeout(const Duration(seconds: 45));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes));
-        if (data is Map<String, dynamic>) {
-          final rawAudio = data['audio_url'] as String?;
-          final answerText = data['answer'] ?? data['text'] ?? 'Ответ получен.';
-          
-          return {
-            'status': data['status'] ?? 'success',
-            'answer': answerText,
-            'text': answerText,
-            'audio_url': formatAudioUrl(rawAudio),
-          };
-        }
-      }
-
-      // Handle FastAPI errors (422 / 404 / 500)
-      String detailedError = 'Ошибка сервера (${response.statusCode})';
-      try {
-        final errBody = utf8.decode(response.bodyBytes);
-        debugPrint('FastAPI Error response: $errBody');
-        final errJson = jsonDecode(errBody);
-        if (errJson is Map && errJson.containsKey('detail')) {
-          final detail = errJson['detail'];
-          if (detail is List) {
-            final missingFields = detail.map((e) {
-              if (e is Map && e.containsKey('loc')) {
-                final locList = (e['loc'] as List).where((p) => p != 'body').join('.');
-                final msg = e['msg'] ?? '';
-                return '$locList: $msg';
-              }
-              return e.toString();
-            }).join(', ');
-            detailedError = 'Ошибка валидации (422): [$missingFields]';
-          } else {
-            detailedError = 'Ошибка: ${detail.toString()}';
-          }
-        }
-      } catch (_) {}
-
-      return {
-        'status': 'error',
-        'answer': detailedError,
-        'text': detailedError,
-        'audio_url': null,
-      };
-    } catch (e) {
-      debugPrint('Exception calling ask-guide: $e');
-      return {
-        'status': 'error',
-        'answer': 'Ошибка соединения с сервером: $e',
-        'text': 'Ошибка соединения с сервером: $e',
-        'audio_url': null,
-      };
-    }
-  }
-
-  /// Generate story based on user's current coordinates
-  static Future<Map<String, dynamic>> generateGuideStory({
+  /// Получение списка близлежащих мест (POI)
+  static Future<List<PoiModel>> getNearbyPois({
     required double lat,
-    required double lng,
-    required String guideId,
+    required double lon,
+    double radiusMeters = 5000.0,
   }) async {
-    return askGuide(
-      lat: lat,
-      lng: lng,
-      guideId: guideId,
-      question: 'Расскажи, что интересного находится рядом со мной.',
+    final uri = Uri.parse('$baseUrl/api/v1/nearby').replace(
+      queryParameters: {
+        'lat': lat.toString(),
+        'lon': lon.toString(),
+        'radius_meters': radiusMeters.toString(),
+      },
     );
-  }
-
-  /// Fetch POIs within specified radius (GET /api/v1/nearby)
-  static Future<List<dynamic>> fetchNearbyPois({
-    required double lat,
-    required double lng,
-    double radiusKm = 5.0,
-  }) async {
-    final url = Uri.parse('$baseUrl/api/v1/nearby?lat=$lat&lng=$lng&radius=$radiusKm');
 
     try {
-      final response = await http.get(url).timeout(const Duration(seconds: 15));
+      final response = await http.get(uri);
+
       if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes));
-        if (data is List) return data;
-        if (data is Map && data.containsKey('items')) return data['items'] as List;
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.map((json) => PoiModel.fromJson(json)).toList();
+      } else {
+        throw Exception('Ошибка загрузки POI: ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('Error fetching nearby POIs: $e');
+      print('ApiService error (getNearbyPois): $e');
+      rethrow;
     }
-
-    return [];
   }
 
-  /// Recognize object via camera image upload (AI Vision)
-  static Future<Map<String, dynamic>> analyzeImage(File imageFile) async {
-    final url = Uri.parse('$baseUrl/api/v1/analyze-image');
+  /// Задать вопрос гиду (RAG / AI)
+  static Future<Map<String, dynamic>> askGuide({
+    required String poiId,
+    required String userQuestion,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/ask-guide');
 
     try {
-      final request = http.MultipartRequest('POST', url);
-      request.files.add(
-        await http.MultipartFile.fromPath('file', imageFile.path),
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'poi_id': poiId,
+          'user_question': userQuestion,
+        }),
       );
 
-      final streamedResponse = await request.send().timeout(const Duration(seconds: 45));
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      } else {
+        throw Exception('Ошибка при вопросе гиду: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('ApiService error (askGuide): $e');
+      rethrow;
+    }
+  }
+
+  /// Распознавание фото через AI Vision
+  static Future<Map<String, dynamic>> analyzeImage(String filePath) async {
+    final uri = Uri.parse('$baseUrl/api/v1/analyze-image');
+
+    try {
+      final request = http.MultipartRequest('POST', uri)
+        ..files.add(await http.MultipartFile.fromPath('file', filePath));
+
+      final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes));
-        if (data is Map<String, dynamic>) {
-          final rawAudio = data['audio_url'] as String?;
-          final desc = data['description'] ?? data['answer'] ?? 'Объект распознан.';
-          
-          return {
-            'status': 'success',
-            'description': desc,
-            'answer': desc,
-            'audio_url': formatAudioUrl(rawAudio),
-          };
-        }
+        return jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
       } else {
-        debugPrint('Vision API Error ${response.statusCode}: ${response.body}');
+        throw Exception('Ошибка анализа изображения: ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('Error uploading image: $e');
+      print('ApiService error (analyzeImage): $e');
+      rethrow;
     }
-
-    return {
-      'status': 'error',
-      'description': 'Не удалось распознать объект.',
-      'answer': 'Не удалось распознать объект.',
-      'audio_url': null,
-    };
   }
 }
