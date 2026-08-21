@@ -2,16 +2,16 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import '../services/api_service.dart';
-import '../main.dart'; // Извлекаем глобальный список cameras
+import '../main.dart';
 
-class CameraScreen extends StatefulWidget {
-  const CameraScreen({Key? key}) : super(key: key);
+class CameraVisionScreen extends StatefulWidget {
+  const CameraVisionScreen({Key? key}) : super(key: key);
 
   @override
-  State<CameraScreen> createState() => _CameraScreenState();
+  State<CameraVisionScreen> createState() => _CameraVisionScreenState();
 }
 
-class _CameraScreenState extends State<CameraScreen> {
+class _CameraVisionScreenState extends State<CameraVisionScreen> {
   CameraController? _controller;
   bool _isInitializing = true;
   bool _isAnalyzing = false;
@@ -60,13 +60,11 @@ class _CameraScreenState extends State<CameraScreen> {
         _resultText = 'Анализируем изображение...';
       });
 
-      // 1. Фиксируем снимок с камеры
       final image = await _controller!.takePicture();
       setState(() {
         _capturedImage = image;
       });
 
-      // 2. Отправляем файл на бэкенд AI Vision
       final result = await ApiService.analyzeImage(File(image.path));
 
       setState(() {
@@ -109,7 +107,6 @@ class _CameraScreenState extends State<CameraScreen> {
       ),
       body: Stack(
         children: [
-          // Превью камеры или зафиксированный снимок
           Positioned.fill(
             child: _capturedImage != null
                 ? Image.file(File(_capturedImage!.path), fit: BoxFit.cover)
@@ -117,8 +114,6 @@ class _CameraScreenState extends State<CameraScreen> {
                     ? CameraPreview(_controller!)
                     : const Center(child: Text('Камера недоступна'))),
           ),
-
-          // Результат распознавания внизу экрана с поддержкой SafeArea
           Positioned(
             left: 16,
             right: 16,
