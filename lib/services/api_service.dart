@@ -5,6 +5,8 @@ import '../models/poi_model.dart';
 
 class ApiService {
   static const String baseUrl = 'https://gid-backend-oi81.onrender.com';
+  // Время ожидания 90 секунд для холодного старта Render
+  static const Duration requestTimeout = Duration(seconds: 90);
 
   /// Получение списка близлежащих мест (POI)
   static Future<List<PoiModel>> getNearbyPois({
@@ -21,7 +23,7 @@ class ApiService {
     );
 
     try {
-      final response = await http.get(uri);
+      final response = await http.get(uri).timeout(requestTimeout);
 
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
@@ -64,7 +66,7 @@ class ApiService {
         uri,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(body),
-      );
+      ).timeout(requestTimeout);
 
       if (response.statusCode == 200) {
         return jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
@@ -85,8 +87,8 @@ class ApiService {
       final request = http.MultipartRequest('POST', uri)
         ..files.add(await http.MultipartFile.fromPath('file', imageFile.path));
 
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
+      final streamedResponse = await request.send().timeout(requestTimeout);
+      final response = await http.Response.fromStream(streamedResponse).timeout(requestTimeout);
 
       if (response.statusCode == 200) {
         return jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
