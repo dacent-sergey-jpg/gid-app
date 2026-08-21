@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../models/poi_model.dart';
 
@@ -37,9 +38,11 @@ class ApiService {
   /// Задать вопрос гиду (RAG / AI)
   static Future<Map<String, dynamic>> askGuide({
     required String poiId,
-    required String userQuestion,
+    String? userQuestion,
+    String? question,
   }) async {
     final uri = Uri.parse('$baseUrl/api/v1/ask-guide');
+    final actualQuestion = userQuestion ?? question ?? '';
 
     try {
       final response = await http.post(
@@ -47,7 +50,7 @@ class ApiService {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'poi_id': poiId,
-          'user_question': userQuestion,
+          'user_question': actualQuestion,
         }),
       );
 
@@ -63,12 +66,12 @@ class ApiService {
   }
 
   /// Распознавание фото через AI Vision
-  static Future<Map<String, dynamic>> analyzeImage(String filePath) async {
+  static Future<Map<String, dynamic>> analyzeImage(File imageFile) async {
     final uri = Uri.parse('$baseUrl/api/v1/analyze-image');
 
     try {
       final request = http.MultipartRequest('POST', uri)
-        ..files.add(await http.MultipartFile.fromPath('file', filePath));
+        ..files.add(await http.MultipartFile.fromPath('file', imageFile.path));
 
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
@@ -82,5 +85,14 @@ class ApiService {
       print('ApiService error (analyzeImage): $e');
       rethrow;
     }
+  }
+
+  /// Форматирование URL аудиозаписи
+  static String? formatAudioUrl(String? rawUrl) {
+    if (rawUrl == null || rawUrl.isEmpty) return null;
+    if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+      return rawUrl;
+    }
+    return '$baseUrl$rawUrl';
   }
 }
