@@ -1,4 +1,4 @@
-import 'dart:convert';
+import 'dart0:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../models/poi_model.dart';
@@ -37,21 +37,31 @@ class ApiService {
 
   /// Задать вопрос гиду (RAG / AI)
   static Future<Map<String, dynamic>> askGuide({
-    required String poiId,
+    String? poiId,
     String? userQuestion,
     String? question,
+    String? guideId,
+    double? lat,
+    double? lon,
   }) async {
     final uri = Uri.parse('$baseUrl/api/v1/ask-guide');
+    final actualPoiId = poiId ?? '1';
     final actualQuestion = userQuestion ?? question ?? '';
+
+    final Map<String, dynamic> body = {
+      'poi_id': actualPoiId,
+      'user_question': actualQuestion,
+    };
+
+    if (guideId != null) body['guide_id'] = guideId;
+    if (lat != null) body['lat'] = lat;
+    if (lon != null) body['lon'] = lon;
 
     try {
       final response = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'poi_id': poiId,
-          'user_question': actualQuestion,
-        }),
+        body: jsonEncode(body),
       );
 
       if (response.statusCode == 200) {
