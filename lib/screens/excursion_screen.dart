@@ -32,7 +32,6 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
   String _statusMessage = 'Определение местоположения...';
   String? _audioUrl;
 
-  // Координаты по умолчанию (Вологда), если GPS не сработает
   double _currentLat = 59.2205;
   double _currentLng = 39.8915;
   late String _currentGuideId;
@@ -42,7 +41,6 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
     super.initState();
     _audioPlayer = AudioPlayer();
 
-    // Отслеживание состояния аудио
     _audioPlayer.onPlayerStateChanged.listen((state) {
       if (mounted) {
         setState(() {
@@ -53,7 +51,6 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
 
     _currentGuideId = widget.guideId ?? 'VOLOGDA_GUIDE';
 
-    // Если координаты переданы извне — используем их, иначе запрашиваем GPS
     if (widget.lat != null && widget.lng != null) {
       _currentLat = widget.lat!;
       _currentLng = widget.lng!;
@@ -70,10 +67,11 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
     super.dispose();
   }
 
-  /// Получение геопозиции и запуск экскурсии
   Future<void> _initLocationAndStart() async {
     try {
-      Position position = await _determinePosition();
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
       if (mounted) {
         setState(() {
           _currentLat = position.latitude;
@@ -84,7 +82,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _statusMessage = 'Геолокация недоступна ($e). Используются координаты по умолчанию.';
+          _statusMessage = 'Используются координаты по умолчанию (Вологда).';
         });
       }
     } finally {
@@ -92,35 +90,6 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
     }
   }
 
-  /// Проверка разрешений и получение GPS
-  Future<Position> _determinePosition() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      return Future.error('Геолокация отключена на устройстве');
-    }
-
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        return Future.error('Разрешение на доступ к геопозиции отклонено');
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      return Future.error('Разрешение на геопозицию запрещено навсегда');
-    }
-
-    // Исправленный вызов getCurrentPosition для версии 12.0.0
-    return await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    );
-  }
-
-  /// Запрос данных экскурсии с бэкенда
   Future<void> _startExcursion() async {
     setState(() {
       _isLoading = true;
@@ -132,10 +101,10 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
         lat: _currentLat,
         lng: _currentLng,
         guideId: _currentGuideId,
-        userQuestion: 'Привет! Расскажи коротко про это место и что ты умеешь.',
+        userQuestion: 'Расскажи про текущее место.',
       );
 
-      final textResponse = response['text_response'] ?? response['answer'] ?? 'Экскурсия начата';
+      final textResponse = response['text_response'] ?? response['answer'] ?? 'Информация загружена.';
       final formattedUrl = ApiService.formatAudioUrl(response['audio_url']);
 
       if (mounted) {
@@ -153,7 +122,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _statusMessage = 'Ошибка при попытке начать экскурсию: $e';
+          _statusMessage = 'Ошибка при запросе к гиду: $e';
         });
       }
     }
@@ -164,7 +133,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
       await _audioPlayer.stop();
       await _audioPlayer.play(UrlSource(url));
     } catch (e) {
-      print('Ошибка воспроизведения аудио: $e');
+      print('Ошибка воспроизведения: $e');
     }
   }
 
@@ -187,7 +156,6 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
           IconButton(
             icon: const Icon(Icons.my_location),
             onPressed: _initLocationAndStart,
-            tooltip: 'Обновить геопозицию',
           ),
         ],
       ),
@@ -222,40 +190,59 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
               ],
             ),
           ),
-          Container(
-            padding: const EdgeInsets.all(16.0),
-            color: Colors.white,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const CircleAvatar(
-                      child: Icon(Icons.record_voice_over),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Гид: $_currentGuideId',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    if (_audioUrl != null)
-                      IconButton(
-                        icon: Icon(_isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill),
-                        iconSize: 44,
-                        color: Theme.of(context).primaryColor,
-                        onPressed: _toggleAudio,
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                if (_isLoading) ...[
-                  const LinearProgressIndicator(),
-                  const SizedBox(height: 8),
+          
+          // Безопасная нижняя панель без наложения на системные кнопки
+          SafeArea(
+            top: false,
+            child: Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.35,
+              ),
+              padding: const EdgeInsets.all(16.0),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2))
                 ],
-                Text(_statusMessage),
-              ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const CircleAvatar(child: Icon(Icons.record_voice_over)),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Гид: $_currentGuideId',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      if (_audioUrl != null)
+                        IconButton(
+                          icon: Icon(_isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill),
+                          iconSize: 40,
+                          color: Theme.of(context).primaryColor,
+                          onPressed: _toggleAudio,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  if (_isLoading) ...[
+                    const LinearProgressIndicator(),
+                    const SizedBox(height: 8),
+                  ],
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: Text(
+                        _statusMessage,
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
