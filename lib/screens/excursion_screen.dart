@@ -114,10 +114,9 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
       return Future.error('Разрешение на геопозицию запрещено навсегда');
     }
 
+    // Исправленный вызов getCurrentPosition для версии 12.0.0
     return await Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-      ),
+      desiredAccuracy: LocationAccuracy.high,
     );
   }
 
