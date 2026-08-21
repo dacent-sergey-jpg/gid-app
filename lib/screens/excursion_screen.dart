@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:geolocator/geolocator.dart';
 import '../services/api_service.dart';
 
 class ExcursionScreen extends StatefulWidget {
@@ -24,13 +25,16 @@ class ExcursionScreen extends StatefulWidget {
 
 class _ExcursionScreenState extends State<ExcursionScreen> {
   late final AudioPlayer _audioPlayer;
+  final MapController _mapController = MapController();
+
   bool _isLoading = false;
   bool _isPlaying = false;
-  String _statusMessage = 'Загрузка экскурсии...';
+  String _statusMessage = 'Определение местоположения...';
   String? _audioUrl;
 
-  late double _currentLat;
-  late double _currentLng;
+  // Координаты по умолчанию (Вологда), если GPS не сработает
+  double _currentLat = 59.2205;
+  double _currentLng = 39.8915;
   late String _currentGuideId;
 
   @override
@@ -38,7 +42,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
     super.initState();
     _audioPlayer = AudioPlayer();
 
-    // Отслеживаем состояние воспроизведения
+    // Отслеживание состояния аудио
     _audioPlayer.onPlayerStateChanged.listen((state) {
       if (mounted) {
         setState(() {
@@ -47,22 +51,81 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
       }
     });
 
-    _currentLat = widget.lat ?? 59.2205;
-    _currentLng = widget.lng ?? 39.8915;
     _currentGuideId = widget.guideId ?? 'VOLOGDA_GUIDE';
-    _startExcursion();
+
+    // Если координаты переданы извне — используем их, иначе запрашиваем GPS
+    if (widget.lat != null && widget.lng != null) {
+      _currentLat = widget.lat!;
+      _currentLng = widget.lng!;
+      _startExcursion();
+    } else {
+      _initLocationAndStart();
+    }
   }
 
   @override
   void dispose() {
     _audioPlayer.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
+  /// Получение геопозиции и запуск экскурсии
+  Future<void> _initLocationAndStart() async {
+    try {
+      Position position = await _determinePosition();
+      if (mounted) {
+        setState(() {
+          _currentLat = position.latitude;
+          _currentLng = position.longitude;
+        });
+        _mapController.move(LatLng(_currentLat, _currentLng), 15.0);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _statusMessage = 'Геолокация недоступна ($e). Используются координаты по умолчанию.';
+        });
+      }
+    } finally {
+      await _startExcursion();
+    }
+  }
+
+  /// Проверка разрешений и получение GPS
+  Future<Position> _determinePosition() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      return Future.error('Геолокация отключена на устройстве');
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        return Future.error('Разрешение на доступ к геопозиции отклонено');
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      return Future.error('Разрешение на геопозицию запрещено навсегда');
+    }
+
+    return await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+      ),
+    );
+  }
+
+  /// Запрос данных экскурсии с бэкенда
   Future<void> _startExcursion() async {
     setState(() {
       _isLoading = true;
-      _statusMessage = 'Подключение к гиду (генерируем ответ и озвучку)...';
+      _statusMessage = 'Подключение к гиду...';
     });
 
     try {
@@ -76,21 +139,24 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
       final textResponse = response['text_response'] ?? response['answer'] ?? 'Экскурсия начата';
       final formattedUrl = ApiService.formatAudioUrl(response['audio_url']);
 
-      setState(() {
-        _isLoading = false;
-        _statusMessage = textResponse;
-        _audioUrl = formattedUrl;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _statusMessage = textResponse;
+          _audioUrl = formattedUrl;
+        });
+      }
 
-      // Автоматический запуск озвучки при получении ссылки
       if (_audioUrl != null && _audioUrl!.isNotEmpty) {
         await _playAudio(_audioUrl!);
       }
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _statusMessage = 'Ошибка при попытке начать экскурсию: $e';
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _statusMessage = 'Ошибка при попытке начать экскурсию: $e';
+        });
+      }
     }
   }
 
@@ -118,12 +184,19 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Интерактивная экскурсия'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.my_location),
+            onPressed: _initLocationAndStart,
+            tooltip: 'Обновить геопозицию',
+          ),
+        ],
       ),
       body: Column(
         children: [
-          // Интерактивная карта OpenStreetMap
           Expanded(
             child: FlutterMap(
+              mapController: _mapController,
               options: MapOptions(
                 initialCenter: currentLatLng,
                 initialZoom: 15.0,
@@ -150,8 +223,6 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
               ],
             ),
           ),
-          
-          // Панель статуса и управления аудиоплеером
           Container(
             padding: const EdgeInsets.all(16.0),
             color: Colors.white,
