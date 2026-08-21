@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../services/api_service.dart';
 
 class ExcursionScreen extends StatefulWidget {
@@ -22,7 +23,9 @@ class ExcursionScreen extends StatefulWidget {
 }
 
 class _ExcursionScreenState extends State<ExcursionScreen> {
+  late final AudioPlayer _audioPlayer;
   bool _isLoading = false;
+  bool _isPlaying = false;
   String _statusMessage = 'Загрузка экскурсии...';
   String? _audioUrl;
 
@@ -33,17 +36,33 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
   @override
   void initState() {
     super.initState();
-    // Координаты Вологды по умолчанию, если параметры не переданы
+    _audioPlayer = AudioPlayer();
+
+    // Отслеживаем состояние воспроизведения
+    _audioPlayer.onPlayerStateChanged.listen((state) {
+      if (mounted) {
+        setState(() {
+          _isPlaying = state == PlayerState.playing;
+        });
+      }
+    });
+
     _currentLat = widget.lat ?? 59.2205;
     _currentLng = widget.lng ?? 39.8915;
     _currentGuideId = widget.guideId ?? 'VOLOGDA_GUIDE';
     _startExcursion();
   }
 
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
   Future<void> _startExcursion() async {
     setState(() {
       _isLoading = true;
-      _statusMessage = 'Подключение к гиду (сервер просыпается)...';
+      _statusMessage = 'Подключение к гиду (генерируем ответ и озвучку)...';
     });
 
     try {
@@ -51,19 +70,44 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
         lat: _currentLat,
         lng: _currentLng,
         guideId: _currentGuideId,
-        userQuestion: 'Начни экскурсию по текущим координатам',
+        userQuestion: 'Привет! Расскажи коротко про это место и что ты умеешь.',
       );
+
+      final textResponse = response['text_response'] ?? response['answer'] ?? 'Экскурсия начата';
+      final formattedUrl = ApiService.formatAudioUrl(response['audio_url']);
 
       setState(() {
         _isLoading = false;
-        _statusMessage = response['text_response'] ?? response['answer'] ?? 'Экскурсия начата';
-        _audioUrl = ApiService.formatAudioUrl(response['audio_url']);
+        _statusMessage = textResponse;
+        _audioUrl = formattedUrl;
       });
+
+      // Автоматический запуск озвучки при получении ссылки
+      if (_audioUrl != null && _audioUrl!.isNotEmpty) {
+        await _playAudio(_audioUrl!);
+      }
     } catch (e) {
       setState(() {
         _isLoading = false;
         _statusMessage = 'Ошибка при попытке начать экскурсию: $e';
       });
+    }
+  }
+
+  Future<void> _playAudio(String url) async {
+    try {
+      await _audioPlayer.stop();
+      await _audioPlayer.play(UrlSource(url));
+    } catch (e) {
+      print('Ошибка воспроизведения аудио: $e');
+    }
+  }
+
+  Future<void> _toggleAudio() async {
+    if (_isPlaying) {
+      await _audioPlayer.pause();
+    } else if (_audioUrl != null && _audioUrl!.isNotEmpty) {
+      await _audioPlayer.play(UrlSource(_audioUrl!));
     }
   }
 
@@ -77,7 +121,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
       ),
       body: Column(
         children: [
-          // Полноценная интерактивная карта OpenStreetMap
+          // Интерактивная карта OpenStreetMap
           Expanded(
             child: FlutterMap(
               options: MapOptions(
@@ -107,7 +151,7 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
             ),
           ),
           
-          // Панель состояния экскурсии
+          // Панель статуса и управления аудиоплеером
           Container(
             padding: const EdgeInsets.all(16.0),
             color: Colors.white,
@@ -120,10 +164,19 @@ class _ExcursionScreenState extends State<ExcursionScreen> {
                       child: Icon(Icons.record_voice_over),
                     ),
                     const SizedBox(width: 12),
-                    Text(
-                      'Гид: $_currentGuideId',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    Expanded(
+                      child: Text(
+                        'Гид: $_currentGuideId',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                     ),
+                    if (_audioUrl != null)
+                      IconButton(
+                        icon: Icon(_isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill),
+                        iconSize: 44,
+                        color: Theme.of(context).primaryColor,
+                        onPressed: _toggleAudio,
+                      ),
                   ],
                 ),
                 const SizedBox(height: 12),
