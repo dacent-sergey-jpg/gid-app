@@ -340,7 +340,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => const CameraVisionScreen(),
+                          builder: (_) => CameraVisionScreen(),
                         ),
                       );
                     },
